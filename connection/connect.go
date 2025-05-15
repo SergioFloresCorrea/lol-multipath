@@ -3,11 +3,15 @@ package connection
 import (
 	"bufio"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
+
+const leagueProcessName = "League of Legends.exe"
 
 type Connection struct {
 	Protocol      string
@@ -23,6 +27,27 @@ type PIDs struct {
 	NumberOfPorts string
 }
 
+func WaitForLeagueAndResolve(protocol string, interval time.Duration, done chan struct{}) {
+	for {
+		select {
+		case <-done:
+			fmt.Println("League watcher stopped.")
+			return
+		default:
+			remoteIPs, localIPs, err := ResolveRiotIP("/tmp/netstat.txt", protocol)
+			if err == nil {
+				fmt.Println("League of Legends process detected!")
+				fmt.Println("Remote IPs:", remoteIPs)
+				fmt.Println("Local IPs:", localIPs)
+				close(done) // stop further polling
+				return
+			}
+			log.Printf("%v\n", err)
+			time.Sleep(interval)
+		}
+	}
+}
+
 func ResolveRiotIP(filePath, protocol string) ([]string, []string, error) {
 	err := writeNetstat(filePath, protocol)
 	if err != nil {
@@ -34,26 +59,12 @@ func ResolveRiotIP(filePath, protocol string) ([]string, []string, error) {
 		return nil, nil, err
 	}
 
-	pids, err := orderPIDbyPorts(protocol)
+	leaguePid, err := GetRiotPID()
 	if err != nil {
 		return nil, nil, err
 	}
 
-	filteredPid, err := filterRiotPID(pids)
-	if err != nil {
-		return nil, nil, err
-	}
-
-	remoteIPs, localIPs := matchPIDConnection(connections, filteredPid)
-
-	totalPorts, err := strconv.Atoi(filteredPid.NumberOfPorts)
-	if err != nil {
-		return nil, nil, fmt.Errorf("couldn't convert string to integer: %v", err)
-	}
-
-	if len(remoteIPs) != totalPorts {
-		return nil, nil, fmt.Errorf("couldn't resolve all remote addresses, missing %d", totalPorts-len(remoteIPs))
-	}
+	remoteIPs, localIPs := matchPIDConnection(connections, leaguePid)
 
 	return remoteIPs, localIPs, nil
 }
@@ -122,61 +133,11 @@ func readNetstatFile(filePath, protocol string) ([]Connection, error) {
 	return connections, nil
 }
 
-func orderPIDbyPorts(protocol string) ([]PIDs, error) {
-	file, err := os.CreateTemp("/tmp", "pids-*.txt")
-	if err != nil {
-		return nil, fmt.Errorf("couldn't create a temporary file")
-	}
-	defer os.Remove(file.Name())
-	defer file.Close()
-
-	cmd := exec.Command("/mnt/c/Windows/System32/netstat.exe", "-c")
-	cmd.Stdout = file
-
-	if err := cmd.Run(); err != nil {
-		return nil, fmt.Errorf("couldn't run the netstat.exe command: %v", err)
-	}
-	file.Seek(0, 0)
-
-	pids := make([]PIDs, 0)
-
-	scanner := bufio.NewScanner(file)
-
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		if line == "" || strings.Contains(line, "Proto") || strings.Contains(line, "Consumo") {
-			continue
-		}
-
-		fields := strings.Fields(line)
-
-		if fields[0] != protocol { // The first field must be equal to the protocol (e.g TCP, UDP)
-			continue
-		}
-
-		pid := PIDs{
-			Protocol:      fields[0],
-			PID:           fields[1],
-			NumberOfPorts: fields[2],
-		}
-
-		pids = append(pids, pid)
-	}
-
-	if err := scanner.Err(); err != nil {
-		return nil, fmt.Errorf("error in reading the file: %v", err)
-	}
-
-	return pids, nil
-
-}
-
-func matchPIDConnection(connections []Connection, pid PIDs) ([]string, []string) {
+func matchPIDConnection(connections []Connection, pid string) ([]string, []string) {
 	remoteIPs := make([]string, 0)
 	localIPs := make([]string, 0)
 	for _, conn := range connections {
-		if conn.PID == pid.PID {
+		if conn.PID == pid {
 			remoteIPs = append(remoteIPs, conn.RemoteAddress)
 			localIPs = append(localIPs, conn.LocalAddress)
 		}
@@ -185,22 +146,33 @@ func matchPIDConnection(connections []Connection, pid PIDs) ([]string, []string)
 	return remoteIPs, localIPs
 }
 
-func filterRiotPID(pids []PIDs) (PIDs, error) {
-	for _, pid := range pids {
-		PID := pid.PID
-		if PID == "0" {
+func GetRiotPID() (string, error) {
+	cmd := exec.Command("tasklist.exe", "/FI", fmt.Sprintf("IMAGENAME eq %s", leagueProcessName))
+	output, err := cmd.Output()
+	if err != nil {
+		return "", fmt.Errorf("unable to run the command tasklist.exe: %v", err)
+	}
+	outputString := string(output)
+	if strings.Contains(outputString, "INFORMACION:") {
+		return "", fmt.Errorf("unable to find %s", leagueProcessName)
+	}
+	lines := strings.Split(outputString, "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.Contains(line, "Nombre de Imagen") || strings.Contains(line, "=") {
 			continue
 		}
-		cmd := exec.Command("tasklist.exe", "/FI", fmt.Sprintf("PID eq %s", PID))
-		output, err := cmd.Output()
-		if err != nil {
-			return PIDs{}, fmt.Errorf("failed: couldn't execute the tasklist command: %v\nOutput:\n%s", err, string(output))
+
+		fields := strings.Fields(line)
+		if strings.Contains(line, leagueProcessName) {
+			for _, f := range fields {
+				if _, err := strconv.Atoi(f); err == nil {
+					return f, nil
+				}
+			}
 		}
-		stringOutput := string(output)
-		if strings.Contains(stringOutput, "League of Legends.exe") {
-			return pid, nil
-		}
+
 	}
 
-	return PIDs{NumberOfPorts: "0"}, fmt.Errorf("couldn't locate the league of legends.exe process")
+	return "", fmt.Errorf("unable to get the PID of %s", leagueProcessName)
 }

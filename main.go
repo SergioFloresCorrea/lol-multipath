@@ -1,20 +1,15 @@
 package main
 
 import (
-	"log"
-	"os"
+	"time"
 
 	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
 )
 
 func main() {
-	filePath := "connection/ips.txt"
-	protocol := "TCP"
-	remoteIPs, localIPs, err := connection.ResolveRiotIP(filePath, protocol)
-	if err != nil {
-		log.Fatalf("Failed: %v", err)
-		os.Exit(1)
-	}
+	done := make(chan struct{})
+	go connection.WaitForLeagueAndResolve("UDP", 2*time.Second, done)
 
-	log.Printf("Local IPs: %v\n Remote IPs: %v\n", localIPs, remoteIPs)
+	// Optionally block main from exiting
+	<-done
 }
