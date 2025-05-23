@@ -4,21 +4,41 @@ import (
 	"log"
 	"net"
 	"os"
-	"strconv"
+	"time"
 
+	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
 	"github.com/SergioFloresCorrea/bondcat-reduceping/udpmultipath"
 )
 
 const hostname = "la1.api.riotgames.com"
 
 func main() {
-	/*
-		done := make(chan struct{})
-		go connection.WaitForLeagueAndResolve("UDP", 2*time.Second, done)
+	var udpConn connection.UDPResult
 
-		// Optionally block main from exiting
-		<-done
-	*/
+	done := make(chan struct{})
+	tcpResultChan := make(chan connection.TCPResult, 1)
+	udpResultChan := make(chan connection.UDPResult, 1)
+
+	go connection.WaitForLeagueAndResolve("UDP", 10*time.Second, done, tcpResultChan, udpResultChan)
+
+	<-done
+
+	select {
+	case result := <-tcpResultChan:
+		if result.Err == nil {
+			log.Println("TCP Done!")
+			log.Println("Remote IPs:", result.RemoteIPs)
+			log.Println("Local IPs:", result.LocalIPs)
+		}
+	case result := <-udpResultChan:
+		if result.Err == nil {
+			log.Println("UDP Done!")
+			log.Println("Local IP:", result.LocalIP)
+			log.Println("Local Port:", result.LocalPort)
+			udpConn = result
+		}
+	}
+
 	packetChan := make(chan []byte)
 
 	localIPv4, localIPv6, err := udpmultipath.GetLocalAddresses()
@@ -32,17 +52,16 @@ func main() {
 		os.Exit(1)
 	}
 
-	log.Printf("Local IPv4 addresses: %v", localIPv4)
-	log.Printf("Local IPv6 addresses: %v", localIPv6)
+	log.Printf("Local Interface IPv4 addresses: %v", localIPv4)
+	log.Printf("Local Interface IPv6 addresses: %v", localIPv6)
 
-	log.Printf("Remote IPv4 addresses: %v", remoteIPv4)
-	log.Printf("Remote IPv6 addresses: %v", remoteIPv6)
+	log.Printf("Remote %v IPv4 addresses: %v", hostname, remoteIPv4)
+	log.Printf("Remote %v IPv6 addresses: %v", hostname, remoteIPv6)
 
 	proxyIP := net.ParseIP(udpmultipath.ListenIPString) // or the IP where dummy_proxy is listening
 	go udpmultipath.ProxyServer()
 
-	go udpmultipath.DummyTraffic(udpmultipath.DummyPort)
-	err = udpmultipath.SniffConnection(strconv.Itoa(udpmultipath.DummyPort), packetChan)
+	err = udpmultipath.SniffConnection(udpConn.LocalPort, packetChan)
 	if err != nil {
 		log.Fatalf("Couldn't sniff the connection %v\n", err)
 		os.Exit(1)
