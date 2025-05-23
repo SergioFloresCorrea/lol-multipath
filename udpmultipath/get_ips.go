@@ -3,6 +3,7 @@ package udpmultipath
 import (
 	"log"
 	"net"
+	"strings"
 	"time"
 )
 
@@ -20,6 +21,10 @@ func GetLocalAddresses() ([]net.IP, []net.IP, error) {
 	for _, iface := range interfaces {
 		// skip down interfaces or loopback
 		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+
+		if strings.Contains(iface.Name, "vEthernet") || strings.Contains(iface.Name, "VirtualBox") {
 			continue
 		}
 
