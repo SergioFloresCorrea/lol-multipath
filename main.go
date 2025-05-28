@@ -11,6 +11,7 @@ import (
 )
 
 const hostname = "la1.api.riotgames.com"
+const remotePort = "5100"
 
 func main() {
 	var udpConn connection.UDPResult
@@ -59,7 +60,7 @@ func main() {
 	log.Printf("Remote %v IPv6 addresses: %v", hostname, remoteIPv6)
 
 	proxyIP := net.ParseIP(udpmultipath.ListenIPString) // or the IP where dummy_proxy is listening
-	go udpmultipath.ProxyServer()
+	go udpmultipath.ProxyServer(remoteIPv4, remotePort)
 
 	err = udpmultipath.SniffConnection(udpConn.LocalPort, packetChan)
 	if err != nil {

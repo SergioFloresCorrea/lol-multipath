@@ -1,10 +1,14 @@
 package udpmultipath
 
 import (
+	"bytes"
+	"encoding/gob"
 	"log"
 	"math/rand"
 	"net"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 const maxConnections = 3
@@ -35,17 +39,21 @@ func sendMultipathData(localToProxyConn []UdpConnection, proxyToServerConn []Udp
 	for packet := range packetChan {
 		for index := range localToProxyConn {
 			wg.Add(1)
-			go func(conn *UdpConnection, packet []byte) {
+			wrappedPacket, err := wrapPacket(packet)
+			if err != nil {
+				return err
+			}
+			go func(conn *UdpConnection, wrappedPacket []byte) {
 				defer wg.Done()
 				conn.mu.Lock()
 				defer conn.mu.Unlock()
-				_, err := conn.conn.Write(packet)
-				log.Printf("Sended the packet %v from %v\n", packet, conn.conn.RemoteAddr())
+				_, err = conn.conn.Write(wrappedPacket)
+				// log.Printf("Sended the packet %v from %v\n", packet, conn.conn.RemoteAddr())
 				if err != nil {
 					log.Printf("Error writing to %v: %v\n", conn.conn.RemoteAddr(), err)
 					return
 				}
-			}(&localToProxyConn[index], packet)
+			}(&localToProxyConn[index], wrappedPacket)
 		}
 		wg.Wait()
 	}
@@ -109,12 +117,17 @@ func closeConnections(connections []UdpConnection) {
 }
 
 func getRandomUDPPort() int {
-	// Decide which range to use
 	if rand.Intn(2) == 0 {
-		// Range 5000–5500
 		return 5000 + rand.Intn(551)
 	} else {
-		// Range 7000–8000
 		return 7000 + rand.Intn(1001)
 	}
+}
+
+func wrapPacket(packet []byte) ([]byte, error) {
+	var buffer bytes.Buffer
+	wrappedPacket := WrappedUDPPacket{ID: uuid.New(), Data: packet}
+	enc := gob.NewEncoder(&buffer)
+	err := enc.Encode(wrappedPacket)
+	return buffer.Bytes(), err
 }

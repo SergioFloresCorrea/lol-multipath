@@ -40,7 +40,7 @@ func SniffConnection(port string, packetChan chan []byte) error {
 			if n > 0 {
 				packet := make([]byte, n)
 				copy(packet, buffer[:n])
-				log.Println("Sending packet to packetChan")
+				// log.Println("Sending packet to packetChan")
 				packetChan <- packet
 			}
 		}
