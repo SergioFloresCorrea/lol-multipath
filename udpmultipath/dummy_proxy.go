@@ -5,13 +5,15 @@ import (
 	"encoding/gob"
 	"log"
 	"net"
+	"os"
 	"time"
 
 	"github.com/google/uuid"
 )
 
 const (
-	ListenAddr = "192.168.18.104:9029" // This will be your dummy "proxy" address
+	ListenAddr      = "192.168.18.104:9029" // This will be your dummy "proxy" address
+	cleanupInterval = 1 * time.Second
 )
 
 func isDuplicate(id uuid.UUID, seenIDTracker *SeenIDTracker) bool {
@@ -35,25 +37,34 @@ var (
 )
 
 func ProxyServer(remoteIPs []net.IP, remotePort string) error {
-	seenIDTracker := &SeenIDTracker{}
+	seenIDTracker := &SeenIDTracker{SeenIDs: make(map[uuid.UUID]time.Time)}
 	addr, err := net.ResolveUDPAddr("udp", ListenAddr)
 	if err != nil {
 		log.Fatalf("Failed to resolve UDP address: %v", err)
-		return err
+		os.Exit(1)
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
 		log.Fatalf("Failed to listen on %s: %v", ListenAddr, err)
-		return err
+		os.Exit(1)
 	}
 	defer conn.Close()
 
 	log.Printf("Dummy UDP proxy listening on %s", ListenAddr)
 
 	buffer := make([]byte, 65535)
+
+	ticker := time.NewTicker(cleanupInterval)
+	defer ticker.Stop()
+
+	go func(ticker *time.Ticker) {
+		for range ticker.C {
+			cleanupMap(seenIDTracker)
+		}
+	}(ticker)
+
 	for {
-		go cleanupMap(seenIDTracker)
 		n, _, err := conn.ReadFromUDP(buffer)
 		if err != nil {
 			log.Printf("Error reading from UDP: %v", err)
@@ -62,7 +73,7 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 		wrappedPacket, err := unwrapPacket(buffer[:n])
 		if err != nil {
 			log.Fatalf("Error unwrapping the UDP packet: %v", err)
-			return err
+			os.Exit(1)
 		}
 
 		if isDuplicate(wrappedPacket.ID, seenIDTracker) {
@@ -89,7 +100,7 @@ func cleanupMap(seenIDTracket *SeenIDTracker) {
 	defer seenIDTracket.mu.Unlock()
 	now := time.Now()
 	for id, timestamp := range seenIDTracket.SeenIDs {
-		if now.Sub(timestamp) > 1*time.Second {
+		if now.Sub(timestamp) > cleanupInterval {
 			delete(seenIDTracket.SeenIDs, id)
 		}
 	}

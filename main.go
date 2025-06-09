@@ -4,6 +4,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
@@ -12,15 +13,33 @@ import (
 
 const hostname = "la1.api.riotgames.com"
 const remotePort = "5100"
+const remotePortForBestSelection = 80
 
 func main() {
+	/*
+		discoveredIP, err := udpmultipath.GetRemoteAddresses()
+		if err != nil {
+			log.Fatalf("%v\n", err)
+			os.Exit(1)
+		}
+
+		bestIPs, err := udpmultipath.SelectBestRemoteIPs(discoveredIP, remotePortForBestSelection)
+		if err != nil {
+			log.Fatalf("%v\n", err)
+			os.Exit(1)
+		}
+		log.Printf("Best Ips found: %v", bestIPs)
+	*/
+
+	discoveredIP, err := udpmultipath.ReadIPRanges(filepath.Join(udpmultipath.OutputDir, udpmultipath.OutputFile))
+
 	var udpConn connection.UDPResult
 
 	done := make(chan struct{})
 	tcpResultChan := make(chan connection.TCPResult, 1)
 	udpResultChan := make(chan connection.UDPResult, 1)
 
-	go connection.WaitForLeagueAndResolve("UDP", 10*time.Second, done, tcpResultChan, udpResultChan)
+	go connection.WaitForLeagueAndResolve("UDP", 1*time.Second, done, tcpResultChan, udpResultChan)
 
 	<-done
 
@@ -47,7 +66,8 @@ func main() {
 		log.Fatalf("%v\n", err)
 		os.Exit(1)
 	}
-	remoteIPv4, remoteIPv6, err := udpmultipath.GetRemoteAddresses(hostname)
+
+	remoteIPv4, err := udpmultipath.SelectRandomRemoteIPs(discoveredIP)
 	if err != nil {
 		log.Fatalf("%v\n", err)
 		os.Exit(1)
@@ -57,7 +77,18 @@ func main() {
 	log.Printf("Local Interface IPv6 addresses: %v", localIPv6)
 
 	log.Printf("Remote %v IPv4 addresses: %v", hostname, remoteIPv4)
-	log.Printf("Remote %v IPv6 addresses: %v", hostname, remoteIPv6)
+
+	RiotIPPort, err := connection.GetRiotUDPAddressAndPort(udpConn.LocalPort, localIPv4)
+	if err != nil {
+		log.Fatalf("%v\n", err)
+		os.Exit(1)
+	}
+	riotIP, riotPort, err := net.SplitHostPort(RiotIPPort)
+	if err != nil {
+		log.Fatalf("%v\n", err)
+		os.Exit(1)
+	}
+	log.Printf("Found Riot IP and Port: %v, %v", riotIP, riotPort)
 
 	proxyIP := net.ParseIP(udpmultipath.ListenIPString) // or the IP where dummy_proxy is listening
 	go udpmultipath.ProxyServer(remoteIPv4, remotePort)
