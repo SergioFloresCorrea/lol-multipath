@@ -90,12 +90,20 @@ func main() {
 	}
 	log.Printf("Found Riot IP and Port: %v, %v", riotIP, riotPort)
 
+	// remoteIPv4 = []net.IP{net.ParseIP(riotIP)} // testing
+
 	proxyIP := net.ParseIP(udpmultipath.ListenIPString) // or the IP where dummy_proxy is listening
 	go udpmultipath.ProxyServer(remoteIPv4, remotePort)
 
-	err = udpmultipath.SniffConnection(udpConn.LocalPort, packetChan)
+	err = udpmultipath.InterceptOngoingConnection(udpConn.LocalPort, packetChan)
 	if err != nil {
-		log.Fatalf("Couldn't sniff the connection %v\n", err)
+		log.Fatalf("Couldn't intercept the connection %v\n", err)
+		os.Exit(1)
+	}
+
+	err = udpmultipath.InterceptIncomingConnection(udpConn.LocalPort)
+	if err != nil {
+		log.Fatalf("Couldn't re-inject incoming packets into the client: %v\n", err)
 		os.Exit(1)
 	}
 

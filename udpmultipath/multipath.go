@@ -89,7 +89,7 @@ func createConnections(dialers []net.Dialer, remoteIPs []net.IP) ([]UdpConnectio
 	proxyToServerConn := make([]UdpConnection, 0)
 
 	for _, localDialer := range localDialers {
-		conn, err := localDialer.Dial("udp", ListenAddr)
+		conn, err := localDialer.Dial("udp", ProxyListenAddr)
 		if err != nil {
 			closeConnections(localToProxyConn)
 			return nil, nil, err

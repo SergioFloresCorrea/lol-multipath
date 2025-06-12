@@ -12,19 +12,10 @@ import (
 )
 
 const (
-	ListenAddr      = "192.168.18.104:9029" // This will be your dummy "proxy" address
+	ProxyListenAddr = "192.168.18.104:9029"
+	ProxyListenPort = "9029"
 	cleanupInterval = 1 * time.Second
 )
-
-func isDuplicate(id uuid.UUID, seenIDTracker *SeenIDTracker) bool {
-	seenIDTracker.mu.Lock()
-	defer seenIDTracker.mu.Unlock()
-	if _, ok := seenIDTracker.SeenIDs[id]; ok {
-		return true
-	}
-	seenIDTracker.SeenIDs[id] = time.Now()
-	return false
-}
 
 func unwrapPacket(packet []byte) (*WrappedUDPPacket, error) {
 	var wrappedPacket WrappedUDPPacket
@@ -33,12 +24,12 @@ func unwrapPacket(packet []byte) (*WrappedUDPPacket, error) {
 }
 
 var (
-	ListenIPString, ListenIPPort, _ = net.SplitHostPort(ListenAddr)
+	ListenIPString, ListenIPPort, _ = net.SplitHostPort(ProxyListenAddr)
 )
 
 func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 	seenIDTracker := &SeenIDTracker{SeenIDs: make(map[uuid.UUID]time.Time)}
-	addr, err := net.ResolveUDPAddr("udp", ListenAddr)
+	addr, err := net.ResolveUDPAddr("udp", ProxyListenAddr)
 	if err != nil {
 		log.Fatalf("Failed to resolve UDP address: %v", err)
 		os.Exit(1)
@@ -46,21 +37,21 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		log.Fatalf("Failed to listen on %s: %v", ListenAddr, err)
+		log.Fatalf("Failed to listen on %s: %v", ProxyListenAddr, err)
 		os.Exit(1)
 	}
 	defer conn.Close()
 
-	log.Printf("Dummy UDP proxy listening on %s", ListenAddr)
+	log.Printf("Dummy UDP proxy listening on %s", ProxyListenAddr)
 
-	buffer := make([]byte, 65535)
+	buffer := make([]byte, 64*1024)
 
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
-			cleanupMap(seenIDTracker)
+			seenIDTracker.cleanupTracker()
 		}
 	}(ticker)
 
@@ -76,10 +67,10 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 			os.Exit(1)
 		}
 
-		if isDuplicate(wrappedPacket.ID, seenIDTracker) {
+		if seenIDTracker.isDuplicate(wrappedPacket.ID) {
 			continue
 		}
-		// log.Printf("Received %d bytes from %v", n, remoteAddr)
+		// log.Printf("Received %d bytes", n)
 
 		for _, ip := range remoteIPs {
 			remoteAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(ip.String(), remotePort))
@@ -91,20 +82,31 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 			if err != nil {
 				log.Printf("Forward error: %v", err)
 			}
+			// log.Printf("Sent %d butes to %v", len(wrappedPacket.Data), remoteAddr)
 		}
 	}
 }
 
-func cleanupMap(seenIDTracket *SeenIDTracker) {
-	seenIDTracket.mu.Lock()
-	defer seenIDTracket.mu.Unlock()
+func (tracker *SeenIDTracker) cleanupTracker() {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
 	now := time.Now()
-	for id, timestamp := range seenIDTracket.SeenIDs {
+	for id, timestamp := range tracker.SeenIDs {
 		if now.Sub(timestamp) > cleanupInterval {
-			delete(seenIDTracket.SeenIDs, id)
+			delete(tracker.SeenIDs, id)
 		}
 	}
 	return
+}
+
+func (tracker *SeenIDTracker) isDuplicate(id uuid.UUID) bool {
+	tracker.mu.Lock()
+	defer tracker.mu.Unlock()
+	if _, ok := tracker.SeenIDs[id]; ok {
+		return true
+	}
+	tracker.SeenIDs[id] = time.Now()
+	return false
 }
 
 func DialProxyServer() error {
@@ -112,7 +114,7 @@ func DialProxyServer() error {
 		IP: net.ParseIP("192.168.18.104"),
 	}
 	dialer := net.Dialer{LocalAddr: address}
-	conn, err := dialer.Dial("udp", ListenAddr)
+	conn, err := dialer.Dial("udp", ProxyListenAddr)
 	if err != nil {
 		return err
 	}
