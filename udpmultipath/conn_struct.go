@@ -18,11 +18,6 @@ type WrappedUDPPacket struct {
 	Data []byte
 }
 
-type SeenIDTracker struct {
-	mu      sync.Mutex
-	SeenIDs map[uuid.UUID]time.Time
-}
-
 type IpLatency struct {
 	ip      string
 	latency time.Duration

@@ -46,14 +46,18 @@ func InterceptOngoingConnection(port string, packetChan chan<- []byte) error {
 
 			// log.Printf("Intercepted package of length %d", n)
 
-			pkt := make([]byte, n)
-			copy(pkt, buf[:n])
+			pkt := buf[:n]
+			/*
+				if _, err := h.Send(pkt, &addr); err != nil {
+					log.Printf("Failed to reinject original outbound packet: %v", err)
+				}
+			*/
 
-			if _, err := h.Send(pkt, &addr); err != nil {
-				log.Printf("Failed to reinject original outbound packet: %v", err)
+			p := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+			if udpLayer := p.Layer(layers.LayerTypeUDP); udpLayer != nil {
+				udp := udpLayer.(*layers.UDP)
+				packetChan <- udp.Payload
 			}
-
-			packetChan <- pkt
 		}
 	}()
 

@@ -4,35 +4,16 @@ import (
 	"log"
 	"net"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
 	"github.com/SergioFloresCorrea/bondcat-reduceping/udpmultipath"
 )
 
-const hostname = "la1.api.riotgames.com"
-const remotePort = "5100"
+const remotePort = "7200"
 const remotePortForBestSelection = 80
 
 func main() {
-	/*
-		discoveredIP, err := udpmultipath.GetRemoteAddresses()
-		if err != nil {
-			log.Fatalf("%v\n", err)
-			os.Exit(1)
-		}
-
-		bestIPs, err := udpmultipath.SelectBestRemoteIPs(discoveredIP, remotePortForBestSelection)
-		if err != nil {
-			log.Fatalf("%v\n", err)
-			os.Exit(1)
-		}
-		log.Printf("Best Ips found: %v", bestIPs)
-	*/
-
-	discoveredIP, err := udpmultipath.ReadIPRanges(filepath.Join(udpmultipath.OutputDir, udpmultipath.OutputFile))
-
 	var udpConn connection.UDPResult
 
 	done := make(chan struct{})
@@ -53,7 +34,6 @@ func main() {
 	case result := <-udpResultChan:
 		if result.Err == nil {
 			log.Println("UDP Done!")
-			log.Println("Local IP:", result.LocalIP)
 			log.Println("Local Port:", result.LocalPort)
 			udpConn = result
 		}
@@ -66,19 +46,15 @@ func main() {
 		log.Fatalf("%v\n", err)
 		os.Exit(1)
 	}
-
-	remoteIPv4, err := udpmultipath.SelectRandomRemoteIPs(discoveredIP)
-	if err != nil {
-		log.Fatalf("%v\n", err)
+	if len(localIPv4) == 0 {
+		log.Fatalf("No local interfaces with IPv4 could be found.")
 		os.Exit(1)
 	}
 
 	log.Printf("Local Interface IPv4 addresses: %v", localIPv4)
-	log.Printf("Local Interface IPv6 addresses: %v", localIPv6)
+	log.Printf("Local Interface IPv6 addresses (unused): %v", localIPv6)
 
-	log.Printf("Remote %v IPv4 addresses: %v", hostname, remoteIPv4)
-
-	RiotIPPort, err := connection.GetRiotUDPAddressAndPort(udpConn.LocalPort, localIPv4)
+	RiotIPPort, RiotLocalIP, err := connection.GetRiotUDPAddressAndPort(udpConn.LocalPort, localIPv4)
 	if err != nil {
 		log.Fatalf("%v\n", err)
 		os.Exit(1)
@@ -88,12 +64,12 @@ func main() {
 		log.Fatalf("%v\n", err)
 		os.Exit(1)
 	}
+
+	remoteIPv4 := []net.IP{net.ParseIP(riotIP)} // testing
 	log.Printf("Found Riot IP and Port: %v, %v", riotIP, riotPort)
 
-	// remoteIPv4 = []net.IP{net.ParseIP(riotIP)} // testing
-
-	proxyIP := net.ParseIP(udpmultipath.ListenIPString) // or the IP where dummy_proxy is listening
-	go udpmultipath.ProxyServer(remoteIPv4, remotePort)
+	proxyIP := net.ParseIP(udpmultipath.ListenIPString)                               // or the IP where dummy_proxy is listening
+	go udpmultipath.ProxyServer(remoteIPv4, riotPort, RiotLocalIP, udpConn.LocalPort) // dummy proxy
 
 	err = udpmultipath.InterceptOngoingConnection(udpConn.LocalPort, packetChan)
 	if err != nil {
@@ -107,7 +83,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	err = udpmultipath.Multipath(localIPv4, proxyIP, nil, packetChan)
+	err = udpmultipath.Multipath(localIPv4, proxyIP, packetChan)
 	if err != nil {
 		log.Fatalf("Couldn't make a multipath connection %v\n", err)
 		os.Exit(1)

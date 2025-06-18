@@ -1,14 +1,14 @@
 package udpmultipath
 
 import (
-	"bytes"
-	"encoding/gob"
+	"bufio"
+	"crypto/sha256"
+	"fmt"
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 const (
@@ -17,18 +17,20 @@ const (
 	cleanupInterval = 1 * time.Second
 )
 
-func unwrapPacket(packet []byte) (*WrappedUDPPacket, error) {
-	var wrappedPacket WrappedUDPPacket
-	err := gob.NewDecoder(bytes.NewReader(packet)).Decode(&wrappedPacket)
-	return &wrappedPacket, err
-}
-
 var (
 	ListenIPString, ListenIPPort, _ = net.SplitHostPort(ProxyListenAddr)
 )
 
-func ProxyServer(remoteIPs []net.IP, remotePort string) error {
-	seenIDTracker := &SeenIDTracker{SeenIDs: make(map[uuid.UUID]time.Time)}
+func ProxyServer(remoteIPs []net.IP, remotePort, clientIP, clientPort string) error {
+	remotePortInt, err := strconv.Atoi(remotePort)
+	if err != nil {
+		log.Fatalf("Remote Port must be a string")
+		os.Exit(1)
+	}
+	tracker := &SeenHashTracker{SeenHash: make(map[[32]byte]time.Time)}
+	isPacketSaved := false
+	pkts := make([][]byte, 0)
+
 	addr, err := net.ResolveUDPAddr("udp", ProxyListenAddr)
 	if err != nil {
 		log.Fatalf("Failed to resolve UDP address: %v", err)
@@ -42,6 +44,11 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 	}
 	defer conn.Close()
 
+	clientAddr, _ := net.ResolveUDPAddr(
+		"udp",
+		net.JoinHostPort(clientIP, clientPort),
+	)
+
 	log.Printf("Dummy UDP proxy listening on %s", ProxyListenAddr)
 
 	buffer := make([]byte, 64*1024)
@@ -51,62 +58,70 @@ func ProxyServer(remoteIPs []net.IP, remotePort string) error {
 
 	go func(ticker *time.Ticker) {
 		for range ticker.C {
-			seenIDTracker.cleanupTracker()
+			tracker.cleanupHash()
 		}
 	}(ticker)
 
 	for {
-		n, _, err := conn.ReadFromUDP(buffer)
+		n, srcAddr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
-			log.Printf("Error reading from UDP: %v", err)
+			log.Printf("read error: %v", err)
 			continue
 		}
-		wrappedPacket, err := unwrapPacket(buffer[:n])
-		if err != nil {
-			log.Fatalf("Error unwrapping the UDP packet: %v", err)
-			os.Exit(1)
-		}
 
-		if seenIDTracker.isDuplicate(wrappedPacket.ID) {
+		hash := sha256.Sum256(buffer[:n])
+		if tracker.isHashDuplicate(hash) {
 			continue
 		}
-		// log.Printf("Received %d bytes", n)
 
-		for _, ip := range remoteIPs {
-			remoteAddr, err := net.ResolveUDPAddr("udp", net.JoinHostPort(ip.String(), remotePort))
-			if err != nil {
-				log.Printf("Resolve error: %v", err)
-				continue
+		// Is this coming *from* one of the real game servers?
+		isFromRemote := false
+		for _, rip := range remoteIPs {
+			if srcAddr.IP.Equal(rip) && srcAddr.Port == remotePortInt {
+				isFromRemote = true
+				break
 			}
-			_, err = conn.WriteToUDP(wrappedPacket.Data, remoteAddr)
-			if err != nil {
-				log.Printf("Forward error: %v", err)
-			}
-			// log.Printf("Sent %d butes to %v", len(wrappedPacket.Data), remoteAddr)
 		}
+
+		if isFromRemote {
+			// ——> Redirect into the client’s real UDP port
+			if _, err := conn.WriteToUDP(buffer[:n], clientAddr); err != nil {
+				log.Printf("failed to send back to client: %v", err)
+			}
+		} else {
+			// ——> New outgoing packet: fan‐out to all remotes
+			for _, rip := range remoteIPs {
+				raddr := &net.UDPAddr{IP: rip, Port: remotePortInt}
+				if _, err := conn.WriteToUDP(buffer[:n], raddr); err != nil {
+					log.Printf("failed to forward to %v: %v", raddr, err)
+				}
+			}
+		}
+
+		if !isPacketSaved {
+			pkts = append(pkts, buffer[:n])
+			if len(pkts) == 3 {
+				StoreUniquePacket(pkts, fmt.Sprintf("%s/packets.bin", OutputDir))
+				isPacketSaved = true
+			}
+
+		}
+
 	}
 }
 
-func (tracker *SeenIDTracker) cleanupTracker() {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	now := time.Now()
-	for id, timestamp := range tracker.SeenIDs {
-		if now.Sub(timestamp) > cleanupInterval {
-			delete(tracker.SeenIDs, id)
-		}
+func StoreUniquePacket(pkts [][]byte, path string) error {
+	f, err := os.Create(fmt.Sprintf("%s", path))
+	if err != nil {
+		return err
 	}
-	return
-}
+	defer f.Close()
 
-func (tracker *SeenIDTracker) isDuplicate(id uuid.UUID) bool {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	if _, ok := tracker.SeenIDs[id]; ok {
-		return true
+	writer := bufio.NewWriter(f)
+	for _, pkt := range pkts {
+		fmt.Fprintln(writer, pkt)
 	}
-	tracker.SeenIDs[id] = time.Now()
-	return false
+	return writer.Flush()
 }
 
 func DialProxyServer() error {
