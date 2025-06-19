@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/gopacket"
@@ -13,10 +14,7 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// InterceptConnection diverts every UDP datagram whose destination port
-// equals port and delivers the raw bytes to out.  Because the WinDivert
-// handle is opened WITHOUT the Sniff flag, the packet is removed from the
-// stack, so the original client → server transfer never happens.
+// for proxy
 func InterceptOngoingConnection(port string, packetChan chan<- []byte) error {
 	_ = divert.MustLoad(divert.DLL)
 	filter := fmt.Sprintf("udp.SrcPort == %s and outbound and !loopback", port)
@@ -130,23 +128,51 @@ func InterceptIncomingConnection(port string) error {
 	return nil
 }
 
-func (tracker *SeenHashTracker) cleanupHash() {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	now := time.Now()
-	for hash, ts := range tracker.SeenHash {
-		if now.Sub(ts) > cleanupInterval {
-			delete(tracker.SeenHash, hash)
-		}
+// no proxy
+func InterceptAndRewritePorts(portChan chan []int, clientPort int) error {
+	/*
+		filter like: "udp and inbound and (udp.DstPort == XXX
+		or udp.DstPort == YYY) and !loopback"
+	*/
+	ports := <-portChan
+	cond := make([]string, len(ports))
+	for i, p := range ports {
+		cond[i] = fmt.Sprintf("udp.DstPort == %d", p)
 	}
-}
+	filter := fmt.Sprintf("udp and inbound and (%s) and !loopback",
+		strings.Join(cond, " or "))
 
-func (tracker *SeenHashTracker) isHashDuplicate(hash [32]byte) bool {
-	tracker.mu.Lock()
-	defer tracker.mu.Unlock()
-	if _, exists := tracker.SeenHash[hash]; exists {
-		return true
+	h, err := divert.Open(filter, divert.Network, 0, 0)
+	if err != nil {
+		return err
 	}
-	tracker.SeenHash[hash] = time.Now()
-	return false
+	go func() {
+		defer h.Close()
+		buf := make([]byte, 64*1024)
+		var addr divert.Address
+		for {
+			n, err := h.Recv(buf, &addr)
+			if err != nil {
+				continue
+			}
+			pkt := buf[:n]
+			p := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
+			ip4 := p.Layer(layers.LayerTypeIPv4).(*layers.IPv4)
+			udp := p.Layer(layers.LayerTypeUDP).(*layers.UDP)
+
+			udp.DstPort = layers.UDPPort(clientPort)
+			udp.SetNetworkLayerForChecksum(ip4)
+
+			out := gopacket.NewSerializeBuffer()
+			opts := gopacket.SerializeOptions{
+				FixLengths: true, ComputeChecksums: true,
+			}
+			gopacket.SerializeLayers(out, opts, ip4, udp,
+				gopacket.Payload(udp.Payload))
+			if _, err = h.Send(out.Bytes(), &addr); err != nil {
+				log.Printf("reinject failed: %v", err)
+			}
+		}
+	}()
+	return nil
 }

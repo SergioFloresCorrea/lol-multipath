@@ -1,9 +1,11 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"net"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
@@ -14,6 +16,9 @@ const remotePort = "7200"
 const remotePortForBestSelection = 80
 
 func main() {
+	noProxy := flag.Bool("no-proxy", false, "run multipath without a proxy")
+	flag.Parse()
+
 	var udpConn connection.UDPResult
 
 	done := make(chan struct{})
@@ -65,27 +70,37 @@ func main() {
 		os.Exit(1)
 	}
 
-	remoteIPv4 := []net.IP{net.ParseIP(riotIP)} // testing
+	remoteIPv4 := net.ParseIP(riotIP) // testing
 	log.Printf("Found Riot IP and Port: %v, %v", riotIP, riotPort)
 
-	proxyIP := net.ParseIP(udpmultipath.ListenIPString)                               // or the IP where dummy_proxy is listening
-	go udpmultipath.ProxyServer(remoteIPv4, riotPort, RiotLocalIP, udpConn.LocalPort) // dummy proxy
-
-	err = udpmultipath.InterceptOngoingConnection(udpConn.LocalPort, packetChan)
-	if err != nil {
-		log.Fatalf("Couldn't intercept the connection %v\n", err)
-		os.Exit(1)
-	}
-
-	err = udpmultipath.InterceptIncomingConnection(udpConn.LocalPort)
-	if err != nil {
+	if err = udpmultipath.InterceptIncomingConnection(udpConn.LocalPort); err != nil {
 		log.Fatalf("Couldn't re-inject incoming packets into the client: %v\n", err)
 		os.Exit(1)
 	}
 
-	err = udpmultipath.Multipath(localIPv4, proxyIP, packetChan)
-	if err != nil {
-		log.Fatalf("Couldn't make a multipath connection %v\n", err)
-		os.Exit(1)
+	if *noProxy {
+		portChan := make(chan []int)
+		clientPort, _ := strconv.Atoi(udpConn.LocalPort)
+		if err = udpmultipath.MultipathDirect(localIPv4, RiotIPPort, packetChan, portChan); err != nil {
+			log.Fatalf("MultipathDirect failed: %v\n", err)
+			os.Exit(1)
+		}
+		if err = udpmultipath.InterceptAndRewritePorts(portChan, clientPort); err != nil {
+			log.Fatalf("Couldn't redirect incoming packets ")
+		}
+	} else {
+		go udpmultipath.ProxyServer(remoteIPv4, riotPort, RiotLocalIP, udpConn.LocalPort) // dummy proxy
+
+		if err = udpmultipath.InterceptOngoingConnection(udpConn.LocalPort, packetChan); err != nil {
+			log.Fatalf("Couldn't intercept the connection %v\n", err)
+			os.Exit(1)
+		}
+
+		err = udpmultipath.MultipathProxy(localIPv4, []string{udpmultipath.ProxyListenAddr}, packetChan)
+		if err != nil {
+			log.Fatalf("Couldn't make a multipath connection %v\n", err)
+			os.Exit(1)
+		}
 	}
+
 }

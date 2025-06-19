@@ -2,24 +2,35 @@ package udpmultipath
 
 import (
 	"log"
-	"math/rand"
 	"net"
 	"sync"
 )
 
 const maxConnections = 2
 
-func Multipath(localIPs []net.IP, proxyIP net.IP, packetChan chan []byte) error {
-	dialers, err := createDialers(nil, localIPs, proxyIP)
+func MultipathProxy(localIPs []net.IP, proxyAddress []string, packetChan chan []byte) error {
+	return multipath(localIPs, proxyAddress, packetChan, nil)
+}
+
+func MultipathDirect(localIPs []net.IP, remoteAddress string, packetChan chan []byte, portChan chan []int) error {
+	return multipath(localIPs, []string{remoteAddress}, packetChan, portChan)
+}
+
+func multipath(localIPs []net.IP, targetsAddr []string, packetChan chan []byte, portChan chan []int) error {
+	dialers, err := createDialers(localIPs)
 	if err != nil {
 		return err
 	}
 
-	localToProxyConn, err := createConnections(dialers)
+	localToTargetsConn, err := createConnections(dialers, targetsAddr)
 	if err != nil {
 		return err
 	}
-	err = sendMultipathData(localToProxyConn, packetChan)
+
+	if portChan != nil {
+		portChan <- localToTargetsConn.Ports
+	}
+	err = sendMultipathData(localToTargetsConn.Conns, packetChan)
 	if err != nil {
 		return err
 	}
@@ -34,14 +45,14 @@ func sendMultipathData(localToProxyConn []UdpConnection, packetChan chan []byte)
 	for packet := range packetChan {
 		for index := range localToProxyConn {
 			wg.Add(1)
-			go func(conn *UdpConnection, wrappedPacket []byte) {
+			go func(udpConn *UdpConnection, packet []byte) {
 				defer wg.Done()
-				conn.mu.Lock()
-				defer conn.mu.Unlock()
-				_, err := conn.conn.Write(wrappedPacket)
-				// log.Printf("Sended the packet %v from %v\n", packet, conn.conn.RemoteAddr())
+				udpConn.mu.Lock()
+				defer udpConn.mu.Unlock()
+				_, err := udpConn.conn.Write(packet)
+				// log.Printf("Sended the packet %v from %v\n", packet, udpConn.conn.RemoteAddr())
 				if err != nil {
-					log.Printf("Error writing to %v: %v\n", conn.conn.RemoteAddr(), err)
+					log.Printf("Error writing to %v: %v\n", udpConn.conn.RemoteAddr(), err)
 					return
 				}
 			}(&localToProxyConn[index], packet)
@@ -51,54 +62,41 @@ func sendMultipathData(localToProxyConn []UdpConnection, packetChan chan []byte)
 	return nil
 }
 
-func createDialers(ZoneMap map[string]string, localIPs []net.IP, proxyIP net.IP) ([]net.Dialer, error) {
+func createDialers(localIPs []net.IP) ([]net.Dialer, error) {
 	dialers := make([]net.Dialer, 0)
-	localIPs = append(localIPs, proxyIP) // the last one will be the proxy
 
-	for _, ip := range localIPs {
-		port := getRandomUDPPort()
-		localAddr := &net.UDPAddr{IP: ip, Port: port}
-		if ip.To4() == nil {
-			localAddr.Zone = ZoneMap[ip.String()]
-		}
-
+	for _, localIP := range localIPs {
+		localAddr := &net.UDPAddr{IP: localIP}
 		dialer := net.Dialer{
 			LocalAddr: localAddr,
 		}
-
 		dialers = append(dialers, dialer)
 	}
 
 	return dialers, nil
 }
 
-func createConnections(dialers []net.Dialer) ([]UdpConnection, error) {
-	localDialers := dialers[:len(dialers)-1]
+func createConnections(dialers []net.Dialer, targetsAddr []string) (ConnectionPort, error) {
+	localToTargetsConn := ConnectionPort{}
 
-	localToProxyConn := make([]UdpConnection, 0)
-
-	for _, localDialer := range localDialers {
-		conn, err := localDialer.Dial("udp", ProxyListenAddr)
-		if err != nil {
-			closeConnections(localToProxyConn)
-			return nil, err
+	for _, localDialer := range dialers {
+		for _, addr := range targetsAddr {
+			conn, err := localDialer.Dial("udp", addr)
+			if err != nil {
+				closeConnections(localToTargetsConn.Conns)
+				return ConnectionPort{}, err
+			}
+			lport := conn.LocalAddr().(*net.UDPAddr).Port
+			localToTargetsConn.Conns = append(localToTargetsConn.Conns, UdpConnection{mu: sync.Mutex{}, conn: conn})
+			localToTargetsConn.Ports = append(localToTargetsConn.Ports, lport)
 		}
-		localToProxyConn = append(localToProxyConn, UdpConnection{mu: sync.Mutex{}, conn: conn})
 	}
 
-	return localToProxyConn, nil
+	return localToTargetsConn, nil
 }
 
 func closeConnections(connections []UdpConnection) {
 	for i := range connections {
 		connections[i].conn.Close()
-	}
-}
-
-func getRandomUDPPort() int {
-	if rand.Intn(2) == 0 {
-		return 5000 + rand.Intn(551)
-	} else {
-		return 7000 + rand.Intn(1001)
 	}
 }
