@@ -84,11 +84,12 @@ outer:
 			ipLayer := packet.NetworkLayer()
 			udpLayer := packet.Layer(layers.LayerTypeUDP)
 			if ipLayer != nil && udpLayer != nil {
+				origIP := ipLayer.NetworkFlow().Src().String()
 				dstIP := ipLayer.NetworkFlow().Dst().String()
 				udp := udpLayer.(*layers.UDP)
 				dstPort := strings.Split(udp.DstPort.String(), "(")[0]
 				result := fmt.Sprintf("%s:%s", dstIP, dstPort)
-				fmt.Printf("Captured destination: %s\n", result)
+				fmt.Printf("Captured destination: %s->%s\n", origIP, result)
 				return result, possibleIPs[index], nil
 			}
 		}

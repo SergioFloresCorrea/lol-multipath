@@ -47,7 +47,7 @@ func WaitForLeagueAndResolve(protocol string, interval time.Duration, done chan 
 					close(done)
 					return
 				}
-				log.Printf("UDP detection error: %v\n", err)
+				// log.Printf("UDP detection error: %v\n", err)
 			}
 		}
 	}

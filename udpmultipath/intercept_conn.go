@@ -14,7 +14,8 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-// for proxy
+// Intercepts the connection going out from `port` and redirects it into `packetChan`
+// without re-introducing the packet into the network stack
 func InterceptOngoingConnection(port string, packetChan chan<- []byte) error {
 	_ = divert.MustLoad(divert.DLL)
 	filter := fmt.Sprintf("udp.SrcPort == %s and outbound and !loopback", port)
@@ -42,14 +43,7 @@ func InterceptOngoingConnection(port string, packetChan chan<- []byte) error {
 				continue
 			}
 
-			// log.Printf("Intercepted package of length %d", n)
-
 			pkt := buf[:n]
-			/*
-				if _, err := h.Send(pkt, &addr); err != nil {
-					log.Printf("Failed to reinject original outbound packet: %v", err)
-				}
-			*/
 
 			p := gopacket.NewPacket(pkt, layers.LayerTypeIPv4, gopacket.Default)
 			if udpLayer := p.Layer(layers.LayerTypeUDP); udpLayer != nil {
@@ -66,7 +60,6 @@ func InterceptIncomingConnection(port string) error {
 	tracker := &SeenHashTracker{SeenHash: make(map[[32]byte]time.Time)}
 	_ = divert.MustLoad(divert.DLL)
 	filter := fmt.Sprintf("udp.DstPort == %s and inbound and !loopback", port)
-	// filter := fmt.Sprintf("tcp.DstPort == %s and inbound and !loopback", port)
 	h, err := divert.Open(filter, divert.Network, 0, 0)
 	if err != nil {
 		return fmt.Errorf("failed to open inbound divert handle: %w", err)
@@ -103,7 +96,6 @@ func InterceptIncomingConnection(port string) error {
 				continue
 			}
 
-			// log.Printf("Received package of length %d", n)
 			pkt := make([]byte, n)
 			copy(pkt, buf[:n])
 
@@ -118,8 +110,6 @@ func InterceptIncomingConnection(port string) error {
 					if _, err := h.Send(pkt, &addr); err != nil {
 						log.Printf("reinject failed: %v", err)
 					}
-				} else {
-					log.Printf("Duplicate packet detected — multipath likely working")
 				}
 			}
 		}

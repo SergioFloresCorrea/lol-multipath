@@ -46,3 +46,15 @@ func GetUDPConnection() (ConnectionUDP, error) {
 
 	return ConnectionUDP{}, fmt.Errorf("couldn't find any connection")
 }
+
+func CheckIfLeagueIsActive() bool {
+	commandString := fmt.Sprintf(`Get-Process -Name "%s" -ErrorAction SilentlyContinue`, leagueProcessName)
+	cmd := exec.Command("powershell.exe", "-Command", commandString)
+
+	output, _ := cmd.Output()
+
+	if strings.TrimSpace(string(output)) != "" {
+		return true
+	}
+	return false
+}

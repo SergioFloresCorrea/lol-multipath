@@ -13,9 +13,16 @@ type UdpConnection struct {
 	conn net.Conn
 }
 
+type result struct {
+	conn     *UdpConnection
+	pingConn net.Conn
+	ping     int64
+}
+
 type ConnectionPort struct {
-	Conns []UdpConnection
-	Ports []int
+	UDPConns  []*UdpConnection
+	Ports     []int
+	PingConns []net.Conn
 }
 
 type WrappedUDPPacket struct {
@@ -23,9 +30,21 @@ type WrappedUDPPacket struct {
 	Data []byte
 }
 
-type IpLatency struct {
-	ip      string
-	latency time.Duration
+type ProxyConfig struct {
+	RemoteIP   net.IP
+	RemotePort string
+	ClientIP   string
+	ClientPort string
+}
+
+type connectionStats struct {
+	proxyAddr string
+	lossRate  float64
+	prevRTT   time.Duration
+	latency   time.Duration
+	jitter    time.Duration
+	sent      int
+	recv      int
 }
 
 type SeenHashTracker struct {
@@ -52,4 +71,14 @@ func (tracker *SeenHashTracker) isHashDuplicate(hash [32]byte) bool {
 	}
 	tracker.SeenHash[hash] = time.Now()
 	return false
+}
+
+func (c *ConnectionPort) CheckLengths() bool {
+	/*
+		Only has meaning if we are using proxies as only they listen to pings.
+	*/
+	check1 := len(c.UDPConns) == len(c.Ports)
+	check2 := len(c.UDPConns) == len(c.PingConns)
+	check3 := len(c.Ports) == len(c.PingConns)
+	return check1 && check2 && check3
 }

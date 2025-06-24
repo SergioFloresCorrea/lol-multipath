@@ -4,16 +4,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"time"
-)
-
-const (
-	InputFile    = "IpRanges/LAN.txt"
-	OutputDir    = "IpRanges"
-	OutputFile   = "discovered_lan_ips.txt"
-	gameUDPPort  = 7263 // Can be changed or tested with a list of ports
-	scanPerRange = 5    // Number of random IPs to test per subnet
-	timeout      = 5 * time.Second
 )
 
 func GetLocalAddresses() ([]net.IP, []net.IP, error) {
@@ -54,10 +44,10 @@ func GetLocalAddresses() ([]net.IP, []net.IP, error) {
 			}
 
 			if ip.To4() != nil {
-				log.Printf("Found interface %v with IPv4\n", iface.Name)
+				log.Printf("Found interface %v with IPv4: %s\n", iface.Name, addr.String())
 				localIPv4 = append(localIPv4, ip)
 			} else {
-				log.Printf("Found interface %v with IPv6\n", iface.Name)
+				log.Printf("Found interface %v with IPv6: %s\n", iface.Name, addr.String())
 				localIPv6 = append(localIPv6, ip)
 			}
 		}
