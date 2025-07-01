@@ -11,6 +11,7 @@ require (
 require golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 
 require (
+	github.com/cespare/xxhash v1.1.0
 	github.com/lysShub/divert-go v0.0.0-20250418062248-28e4462def61
 	golang.org/x/sys v0.16.0
 )

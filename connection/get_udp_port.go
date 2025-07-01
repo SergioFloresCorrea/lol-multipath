@@ -3,22 +3,18 @@ package connection
 import (
 	"fmt"
 	"io"
-	"log"
 	"net"
 	"strings"
-	"time"
 
 	"github.com/google/gopacket"
 	"github.com/google/gopacket/layers"
 	"github.com/google/gopacket/pcap"
 )
 
-const (
-	snapshotLen = 1024
-	promiscuous = false
-	timeout     = 2 * time.Second
-)
-
+// Checks for all available interfaces and matches those who have a corresponding local IPv4.
+// Then, it tries to determine which of them is receiving the UDP traffic
+// (i.e the interface with the lowest metric). Finally, it resolves the League Client Local IP address,
+// Riot's remote server address (IP + Port) from the received UDP packets.
 func GetRiotUDPAddressAndPort(port string, localIPv4 []net.IP) (string, string, error) {
 	filter := fmt.Sprintf("udp and src port %s", port)
 	possibleDevices := make([]string, 0)
@@ -51,7 +47,7 @@ func GetRiotUDPAddressAndPort(port string, localIPv4 []net.IP) (string, string, 
 	}
 
 	if len(possibleDevices) != len(localIPv4) {
-		log.Fatalf("An interface has no matching device")
+		return "", "", fmt.Errorf("an interface has no matching device")
 	}
 
 outer:
@@ -59,11 +55,10 @@ outer:
 		fmt.Printf("Using interface: %s\n", device)
 		handle, err := pcap.OpenLive(device, 1024, false, timeout)
 		if err != nil {
-			return "", "", fmt.Errorf("failed to open device: %v", err)
+			return "", "", fmt.Errorf("failed to open device: %w", err)
 		}
-		defer handle.Close()
 		if err := handle.SetBPFFilter(filter); err != nil {
-			return "", "", fmt.Errorf("failed to set BPF filter: %v", err)
+			return "", "", fmt.Errorf("failed to set BPF filter: %w", err)
 		}
 		packetSource := gopacket.NewPacketSource(handle, handle.LinkType())
 
@@ -72,15 +67,19 @@ outer:
 			if err != nil {
 				switch err {
 				case pcap.NextErrorTimeoutExpired:
+					handle.Close()
 					fmt.Printf("Timeout on %s, trying next device\n", device)
 					continue outer
 				case io.EOF:
+					handle.Close()
 					continue outer
 				default:
-					return "", "", fmt.Errorf("packet read error on %s: %v", device, err)
+					handle.Close()
+					return "", "", fmt.Errorf("packet read error on %s: %w", device, err)
 				}
 			}
 			// we got a packet — process it:
+			handle.Close()
 			ipLayer := packet.NetworkLayer()
 			udpLayer := packet.Layer(layers.LayerTypeUDP)
 			if ipLayer != nil && udpLayer != nil {

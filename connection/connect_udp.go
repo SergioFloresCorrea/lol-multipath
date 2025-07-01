@@ -7,11 +7,8 @@ import (
 	"strings"
 )
 
-type ConnectionUDP struct {
-	LocalAddress string
-	LocalPort    string
-}
-
+// Uses a powershell command to find the port and the local address `leagueProcessName` uses to listen
+// for UDP traffic.
 func GetUDPConnection() (ConnectionUDP, error) {
 	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id }`, leagueProcessName)
 	cmd := exec.Command("powershell.exe", "-Command", commandString)
@@ -20,7 +17,7 @@ func GetUDPConnection() (ConnectionUDP, error) {
 	output, err := cmd.Output()
 
 	if err != nil {
-		return ConnectionUDP{}, fmt.Errorf("error in running the powershell command %v", err)
+		return ConnectionUDP{}, fmt.Errorf("error in running the powershell command %w", err)
 	}
 
 	if len(output) > 0 {

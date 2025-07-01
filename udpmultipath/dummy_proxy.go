@@ -1,23 +1,26 @@
 package udpmultipath
 
 import (
-	"crypto/sha256"
+	"context"
 	"encoding/binary"
 	"fmt"
 	"log"
 	"net"
 	"strconv"
 	"time"
+
+	"github.com/cespare/xxhash"
 )
 
-const (
-	cleanupInterval = 1 * time.Second
-)
-
-func ProxyServer(configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr, server string) error {
+// Example proxy server. This program relies on the proxies having a really specific behaviour.
+// They must listen for packets and, depending on whether the League Client or the League Server is sending them,
+// Reroute the packets to the League Server and League Client respectively.
+// The proxy server must also have a listener open for pings.
+func (serverCfg *Config) ProxyServer(ctx context.Context, configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr string) error {
 	go func() {
-		if err := PingHandler(ProxyPingListenAddr, server); err != nil {
-			log.Fatalf("ping handler failed: %v", err)
+		if err := PingHandler(ctx, ProxyPingListenAddr, serverCfg.Server, serverCfg.ServerMap); err != nil {
+			log.Printf("ping handler failed: %v\n Closing the ping handler...", err)
+			return
 		}
 	}()
 
@@ -30,18 +33,18 @@ func ProxyServer(configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr
 
 	remotePortInt, err := strconv.Atoi(remotePort)
 	if err != nil {
-		return fmt.Errorf("Remote Port must be a string")
+		return fmt.Errorf("Remote Port must be a numeric string")
 	}
-	tracker := &SeenHashTracker{SeenHash: make(map[[32]byte]time.Time)}
+	tracker := &SeenHashTracker{SeenHash: make(map[uint64]time.Time)}
 
 	addr, err := net.ResolveUDPAddr("udp", ProxyListenAddr)
 	if err != nil {
-		return fmt.Errorf("Failed to resolve UDP address: %v", err)
+		return fmt.Errorf("Failed to resolve UDP address: %w", err)
 	}
 
 	conn, err := net.ListenUDP("udp", addr)
 	if err != nil {
-		return fmt.Errorf("Failed to listen on %s: %v", ProxyListenAddr, err)
+		return fmt.Errorf("Failed to listen on %s: %w", ProxyListenAddr, err)
 	}
 	defer conn.Close()
 
@@ -50,7 +53,7 @@ func ProxyServer(configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr
 		net.JoinHostPort(clientIP, clientPort),
 	)
 	if err != nil {
-		return fmt.Errorf("Error in resolving the client's UDP address: %v", err)
+		return fmt.Errorf("Error in resolving the client's UDP address: %w", err)
 	}
 
 	log.Printf("Dummy UDP proxy listening on %s", ProxyListenAddr)
@@ -60,20 +63,39 @@ func ProxyServer(configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr
 	ticker := time.NewTicker(cleanupInterval)
 	defer ticker.Stop()
 
-	go func(ticker *time.Ticker) {
-		for range ticker.C {
-			tracker.cleanupHash()
+	go func() {
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				tracker.cleanupHash()
+			}
 		}
-	}(ticker)
+	}()
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil
+		}
+
+		// avoid hanging for more than 1 second
+		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+
 		n, srcAddr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
+			if ne, ok := err.(net.Error); ok && ne.Timeout() {
+				if ctx.Err() != nil {
+					return nil
+				}
+				continue
+			}
+
 			log.Printf("read error: %v", err)
 			continue
 		}
 
-		hash := sha256.Sum256(buffer[:n])
+		hash := xxhash.Sum64(buffer[:n])
 		if tracker.isHashDuplicate(hash) {
 			continue
 		}
@@ -98,7 +120,10 @@ func ProxyServer(configCh chan ProxyConfig, ProxyListenAddr, ProxyPingListenAddr
 	}
 }
 
-func PingHandler(listenAddr, server string) error {
+// Example ping handler. It listens to 8-byte udp packets and makes an HTTP request to the league servers
+// (idea taken from https://pingtestlive.com/league-of-legends) and responds with the time (in ms) taken
+// for the DNS resolution and TCP handshake to happen (we call it: the bloat).
+func PingHandler(ctx context.Context, listenAddr, server string, serverMap map[string]string) error {
 	pc, err := net.ListenPacket("udp", listenAddr)
 	if err != nil {
 		return err
@@ -110,25 +135,29 @@ func PingHandler(listenAddr, server string) error {
 	respBuf := make([]byte, 8) // to hold the 8-byte nanosecond latency
 
 	for {
+		if err := ctx.Err(); err != nil {
+			return nil
+		}
+
 		n, addr, err := pc.ReadFrom(reqBuf)
 		if err != nil {
-			return fmt.Errorf("error in reading from the buffer: %v", err)
+			return fmt.Errorf("error in reading from the buffer: %w", err)
 		}
 		if n != 8 {
 			return fmt.Errorf("unexpected number of received bytes. Received %d, Expected 8", n)
 		}
 
-		// measure HTTP “ping” from the proxy out to AWS
-		bloat, err := GetBloat(server)
+		// measure HTTP bloat (total time - latency) from the proxy out to AWS
+		bloat, err := GetBloat(serverMap, server)
 		if err != nil {
-			return fmt.Errorf("HTTP ping error (%s): %v", server, err)
+			return fmt.Errorf("HTTP ping error (%s): %w", server, err)
 		}
 
 		binary.BigEndian.PutUint64(respBuf, uint64(bloat.Milliseconds()))
 
 		// echo the 8-byte latency back to the client
 		if _, err := pc.WriteTo(respBuf, addr); err != nil {
-			log.Printf("failed to write ping echo: %v", err)
+			return fmt.Errorf("failed to write ping echo: %w", err)
 		}
 	}
 }

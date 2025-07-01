@@ -15,14 +15,13 @@ type UdpConnection struct {
 
 type result struct {
 	conn     *UdpConnection
-	pingConn net.Conn
+	pingConn *UdpConnection
 	ping     int64
 }
 
 type ConnectionPort struct {
 	UDPConns  []*UdpConnection
-	Ports     []int
-	PingConns []net.Conn
+	PingConns []*UdpConnection
 }
 
 type WrappedUDPPacket struct {
@@ -37,21 +36,12 @@ type ProxyConfig struct {
 	ClientPort string
 }
 
-type connectionStats struct {
-	proxyAddr string
-	lossRate  float64
-	prevRTT   time.Duration
-	latency   time.Duration
-	jitter    time.Duration
-	sent      int
-	recv      int
-}
-
 type SeenHashTracker struct {
 	mu       sync.Mutex
-	SeenHash map[[32]byte]time.Time
+	SeenHash map[uint64]time.Time
 }
 
+// Cleans entries in the hash tracker older than `cleanupInterval`
 func (tracker *SeenHashTracker) cleanupHash() {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
@@ -63,7 +53,10 @@ func (tracker *SeenHashTracker) cleanupHash() {
 	}
 }
 
-func (tracker *SeenHashTracker) isHashDuplicate(hash [32]byte) bool {
+// Checks if a hash is was already saved in the hash tracker.
+// If it is, returns true. If it isn't, saves the timestamp with the hash
+// as a key and returns false.
+func (tracker *SeenHashTracker) isHashDuplicate(hash uint64) bool {
 	tracker.mu.Lock()
 	defer tracker.mu.Unlock()
 	if _, exists := tracker.SeenHash[hash]; exists {
@@ -73,12 +66,8 @@ func (tracker *SeenHashTracker) isHashDuplicate(hash [32]byte) bool {
 	return false
 }
 
+// Checks if every connection to a proxy has a corresponding connection
+// where to ping
 func (c *ConnectionPort) CheckLengths() bool {
-	/*
-		Only has meaning if we are using proxies as only they listen to pings.
-	*/
-	check1 := len(c.UDPConns) == len(c.Ports)
-	check2 := len(c.UDPConns) == len(c.PingConns)
-	check3 := len(c.Ports) == len(c.PingConns)
-	return check1 && check2 && check3
+	return len(c.UDPConns) == len(c.PingConns)
 }
