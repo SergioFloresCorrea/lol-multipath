@@ -49,7 +49,7 @@ configuration.
 ```
 
 For example,
-`lol-multipath.exe -proxy-listen-addr=IP1:PORT1,IP2:PORT2" -proxy-ping-listen-addr="IP1:PORT1X,IP2:PORT2X"`
+`lol-multipath.exe -proxy-listen-addr=IP1:PORT1,IP2:PORT2" -proxy-ping-listen-addr="IP1:PORT1X,IP2:PORT2X" -server "NA"`
 Take into account that the ping address and ping listen address must have a 1-to-1 correspondence (as seen from the IPs in the example).
 
 ## Regarding the Proxy
