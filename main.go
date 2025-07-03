@@ -18,9 +18,9 @@ import (
 )
 
 func main() {
-	proxyListenCSV := flag.String("proxy-listen-addr", "", "comma-separated list of proxy listen addresses (e.g. \"A:9029,B:9030\")")
-	proxyPingCSV := flag.String("proxy-ping-listen-addr", "", "comma-separated list of proxy ping addresses   (e.g. \"A:10001,B:10002\")")
-	server := flag.String("server", "", "league of legends server. Available servers: NA, LAS, EUW, OCE, EUNE, RU, TR, JP, KR")
+	proxyListenCSV := flag.String("proxy-listen-addr", "", "(required) comma-separated list of proxy listen addresses (e.g. \"A:9029,B:9030\")")
+	proxyPingCSV := flag.String("proxy-ping-listen-addr", "", "(required) comma-separated list of proxy ping addresses   (e.g. \"A:10001,B:10002\")")
+	server := flag.String("server", "", "league of legends server. (required) Available servers: NA, LAS, EUW, OCE, EUNE, RU, TR, JP, KR")
 	thresholdFactor := flag.Float64("threshold-factor", 1.4, "exclude connections whose ping exceeds thresholdFactorxthe lowest observed ping. Must be greater than 1.0")
 	updateInterval := flag.Duration("update-interval", 30*time.Second, "interval at which to refresh each connection's ping metrics")
 	probeInterval := flag.Duration("probe-interval", 10*time.Second, "interval at which to probe for down connections")
@@ -88,7 +88,7 @@ func main() {
 
 	resultCh := make(chan connection.UDPResult, 1)
 	go func() {
-		res, err := connection.WaitForLeagueAndResolve(ctx, 1*time.Second)
+		res, err := connection.WaitForLeagueAndResolve(ctx, 5*time.Second)
 		if err != nil {
 			cancel()
 			log.Fatalf("failed to resolve league process: %v", err)
