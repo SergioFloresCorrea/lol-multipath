@@ -26,7 +26,8 @@ type Config struct {
 func (cfg *Config) GenerateServerMap() {
 	if cfg.ServerMap == nil {
 		cfg.ServerMap = map[string]string{
-			"NA":   fmt.Sprintf("https://dynamodb.us-east-1.amazonaws.com/ping?x=%s", cfg.Rand),
+			"NA":   fmt.Sprintf("https://dynamodb.us-east-2.amazonaws.com/ping?x=%s", cfg.Rand),
+			"LAN":  fmt.Sprintf("https://dynamodb.us-east-1.amazonaws.com/ping?x=%s", cfg.Rand),
 			"LAS":  fmt.Sprintf("https://dynamodb.sa-east-1.amazonaws.com/ping?x=%s", cfg.Rand),
 			"EUW":  fmt.Sprintf("https://dynamodb.eu-central-1.amazonaws.com/ping?x=%s", cfg.Rand),
 			"OCE":  fmt.Sprintf("https://dynamodb.ap-southeast-2.amazonaws.com/ping?x=%s", cfg.Rand),

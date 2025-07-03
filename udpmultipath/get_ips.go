@@ -68,10 +68,10 @@ func redactAddress(addr string) (string, error) {
 		return "", errors.New("invalid IPv4 address: " + parts[0])
 	}
 	ipStringParts[3] = "x"
-	parts[1] = "x"
 
 	redacted := strings.Join(ipStringParts, ".")
 	if len(parts) == 2 {
+		parts[1] = "x"
 		redacted += "/" + parts[1]
 	}
 
