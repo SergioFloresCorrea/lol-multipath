@@ -1,6 +1,8 @@
 # Multipath connection for League of Legends
 
 ## Introduction
+Currently, the project only works for Windows. 
+
 This project attempts to be a starter point for multipath proxy connections between the game client and the Riot's game servers.
 A map what happens is as follows:
 ```
@@ -18,39 +20,31 @@ Ideally, this multipath connection should ensure greater stability (and thus, a 
 needs to travel between the game client and the game server, it may also reduce latency. The code provided ensures that only the connections
 with the lowest ping are used by leveraging WinDivert and the net-package. 
 
-Currently, the project only works for Windows. 
-
 ## Usage
-The code uses WinDivert to intercept incoming packets; thus, admin priviledges are needed.
-As I don't own any proxy servers (*), a direct executable won't be of any use. The code still needs to be slightly altered to ensure direct 
+The code uses WinDivert to intercept incoming packets; thus, admin privileges are needed.
+I don’t run public proxy servers (*), so the binary alone won't be of any use. You’ll need to point it at your own proxies or loopback adapters. 
+The code still needs to be slightly altered to ensure direct 
 communications with the proxies. However, it does provide an example on how that may be done, as well as flags which ensure the multipath
 configuration. 
 
 ```
--cleanup-interval duration
-        how long to wait before cleaning the packet cache involved in the deduplicating package process (default 1s)
--dynamic
-      enable periodic proxy reselection
--max-connections int
-      maximum number of connections for multipath routing (default 2)
--probe-interval duration
-      interval at which to probe for down connections (default 10s)
--proxy-listen-addr string
-      (required) comma-separated list of proxy listen addresses (e.g. "A:9029,B:9030")
--proxy-ping-listen-addr string
-      (required) comma-separated list of proxy ping addresses   (e.g. "A:10001,B:10002")
--server string
-      (required) league of legends server. Available servers: NA, LAS, EUW, OCE, EUNE, RU, TR, JP, KR
--threshold-factor float
-      exclude connections whose ping exceeds thresholdFactorxthe lowest observed ping. Must be greater than 1.0 (default 1.4)
--timeout duration
-      ping response timeout (default 1s)
--update-interval duration
-      interval at which to refresh each connection's ping metrics (default 30s)
+| Flag                             | Type     | Description                                                                                                               |
+| -------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------- |
+| `-cleanup-interval duration`     | duration | how long to wait before cleaning the packet cache involved in the deduplicating package process (default 1s)              |
+| `-dynamic`                       | bool     | enable periodic proxy reselection                                                                                         |
+| `-max-connections int`           | int      | maximum number of connections for multipath routing (default 2)                                                           |
+| `-probe-interval duration`       | duration | interval at which to probe for down connections (default 10s)                                                             |
+| `-proxy-listen-addr string`      | string   | **required** comma-separated list of proxy listen addresses (e.g. `"A:9029,B:9030"`)                                      |
+| `-proxy-ping-listen-addr string` | string   | **required** comma-separated list of proxy ping addresses (e.g. `"A:10001,B:10002"`)                                      |
+| `-server string`                 | string   | **required** League of Legends server. Available servers: NA, LAS, EUW, OCE, EUNE, RU, TR, JP, KR                         |
+| `-threshold-factor float`        | float    | exclude connections whose ping exceeds thresholdFactor × the lowest observed ping. Must be greater than 1.0 (default 1.4) |
+| `-timeout duration`              | duration | ping response timeout (default 1s)                                                                                        |
+| `-update-interval duration`      | duration | interval at which to refresh each connection’s ping metrics (default 30s)                                                 |
+
 ```
 
 For example,
-`lol-multipath.exe -proxy-listen-addr=IP1:PORT1,IP2:PORT2" -proxy-ping-listen-addr="IP1:PORT1X,IP2:PORT2X" -server "NA" -dynamic`
+`lol-multipath.exe -proxy-listen-addr="IP1:PORT1,IP2:PORT2" -proxy-ping-listen-addr="IP1:PORT1X,IP2:PORT2X" -server "NA" -dynamic`
 Take into account that the ping address and ping listen address must have a 1-to-1 correspondence (as seen from the IPs in the example).
 
 
@@ -75,10 +69,17 @@ the lowest ping through a pinging process. This process consists of the followin
 4. Once the response is received, the timer is stopped. The "expected ping" is a measure of all the time taken minus the `bloat`.
 
 If `-dynamic` is on, this reselection process is repeated every `-update-interval`. However, the filtering only occurs once. After that, the proxy is in charge of redirecting the incoming
-packets to the server or game client depending on the sender. 
+packets to the server or game client depending on the sender. Below is a small diagram of the process.
+
+```
+Client ping ─┐                                 ┌─> Riot HTTPS ping
+             │  UDP echo          HTTP GET     │
+     < 1 ms  ▼     ▼                ▼          │  ~40 ms
+           Proxy (measure bloat) —— Proxy —————
+```
 
 ## Known Limitations
-1. The program handles down connections by probing them every `-probe-interval`. If there is a response, it is re-added to the available connections. However, this was not throughly tested
+1. The program handles down connections by probing them every `-probe-interval`. If there is a response, it is re-added to the available connections. However, this was not thoroughly tested
    as I have no proxy servers.
 2. The program automatically notices when the game is running and starts all the multipath logic; however, it does not detect when the game ends so it needs to be manually restarted.
    Attempts to make this process automatic have been made (see commented `CheckIfLeagueIsActive()` section in `main.go`), but the performance was deplorable.
@@ -87,12 +88,12 @@ packets to the server or game client depending on the sender.
    alphabet (I am sorry).
 4. This code **may** be upgraded for other games that use UDP as their protocol to send information. For that, only `Generate Server Map` and `leagueProcessName` would need to be changed.
    I don't play any other games so it is inconvenient to test it, feel free to do it though.
-   
+
 
 ## Additional Notes
 This section is just me sharing my insights into the process that, while may have been obvious at first, took me some effort to grasp. 
 Firstly, all connections use UDP protocol. Second, each big Riot server (i.e "NA", "LAN") is subdivided into many "shards", or mini-servers that handle the incoming packets. 
 An initial idea would be to find the addresses of those "shards", which will indeed make things faster, but I wasn't able to do it (and don't think it is possible unless you are a Riot employee).
-If I remmeber something I will add it here.
+If I remember something I will add it here.
 
 (*) All tests were done using my own internet interfaces, so it may not be fully complete.
