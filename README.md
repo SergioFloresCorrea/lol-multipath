@@ -3,6 +3,7 @@
 ## Introduction
 This project attempts to be a starter point for multipath proxy connections between the game client and the Riot's game servers.
 A map what happens is as follows:
+```
     ------------------- Proxy A -----------------
     |                                           |
 Game Client------------ Proxy B ---------------- Riot's game server
@@ -11,6 +12,7 @@ internet interfaces        |                    |
 e.g WiFi, Ethernet)        |                    |
     |                      |                    |
     ------------------- Proxy N -----------------
+```
 
 Ideally, this multipath connection should ensure greater stability (and thus, a more stable ping) and, by reducing the distance a UDP packet
 needs to travel between the game client and the game server, it may also reduce latency. The code provided ensures that only the connections
