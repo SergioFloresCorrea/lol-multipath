@@ -1,0 +1,58 @@
+name: ci
+
+jobs:
+  tests:
+    name: Tests
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Install gosec
+        run: go install github.com/securego/gosec/v2/cmd/gosec@latest
+
+      - name: Run tests
+        shell: pwsh
+        run: |
+          go test ./... -cover
+
+      - name: Security checks
+        shell: pwsh
+        run: |
+          gosec ./...
+
+  style:
+    name: Style
+    runs-on: windows-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23.0"
+
+      - name: Install staticcheck
+        run: go install honnef.co/go/tools/cmd/staticcheck@latest
+
+      - name: Check Style
+        shell: pwsh
+        run: |
+          $formatted = go fmt ./...
+          if ($formatted) {
+            Write-Error "Go files must be formatted (run go fmt)"
+          }
+
+      - name: Do static check
+        shell: pwsh
+        run: |
+          staticcheck ./...
+
