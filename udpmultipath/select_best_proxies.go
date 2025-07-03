@@ -18,7 +18,7 @@ var (
 
 // Pings every connection and returns them in ascending order. Depending on `firstTime` it trims them depending
 // on whether their ping exceeds 40% from the least ping.
-func (cfg *Config) selectBestConnections(conns []*UdpConnection, pingConn []*UdpConnection, firstTime *bool) ([]*UdpConnection, error) {
+func (cfg *Config) selectBestConnections(conns []*UdpConnection, pingConn []*UdpConnection, firstTime *bool) []*UdpConnection {
 	var wg sync.WaitGroup
 	results := make(chan result, len(conns))
 
@@ -40,40 +40,27 @@ func (cfg *Config) selectBestConnections(conns []*UdpConnection, pingConn []*Udp
 	}()
 
 	var all []result
-	var toBeClosed []result
 	for r := range results {
 		all = append(all, r)
 	}
 
-	if *firstTime {
-		// grab smallest pings considering the threshold
-		if len(all) > cfg.MaxConnections {
-			sort.Slice(all, func(i, j int) bool {
-				return all[i].ping < all[j].ping
-			})
-			cutoff := int64(float64(all[0].ping) * cfg.ThresholdFactor)
-			cutoffIndex := getClosest(all, cutoff)
-			toBeClosed = all[cutoffIndex:]
-			all = all[:cutoffIndex]
-		}
-		*firstTime = false
+	selected, toBeClosed := cfg.selectAndCloseConnections(all, firstTime)
 
-		// close unneded connections
-		toBeClosedConnections := make([]*UdpConnection, len(toBeClosed))
-		for index, _ := range toBeClosed {
-			toBeClosedConnections[index] = toBeClosed[index].conn
-		}
-		closeConnections(toBeClosedConnections)
+	// aggregate connections to be closed
+	toBeClosedConnections := make([]*UdpConnection, len(toBeClosed))
+	for index, _ := range toBeClosed {
+		toBeClosedConnections[index] = toBeClosed[index].conn
+	}
+	closeConnections(toBeClosedConnections)
+
+	cfg.showPings(selected)
+
+	bestConnections := make([]*UdpConnection, len(selected))
+	for index, _ := range selected {
+		bestConnections[index] = selected[index].conn
 	}
 
-	cfg.showPings(all)
-
-	bestConnections := make([]*UdpConnection, len(all))
-	for index, _ := range all {
-		bestConnections[index] = all[index].conn
-	}
-
-	return bestConnections, nil
+	return bestConnections
 }
 
 // Sends a HTTP request to the League `server` (i.e LAN, LAS, NA, etc) and calculates the time it needs for
@@ -185,6 +172,28 @@ func (cfg *Config) udping(conn *UdpConnection) (int64, error) {
 	return pingDur.Milliseconds(), nil
 }
 
+// Sorts the connections based on ping in ascending order.
+// If it is invoked for the first time, it also trimms those whose ping is greater that `cfg.ThresholdFactor`.
+func (cfg *Config) selectAndCloseConnections(all []result, firstTime *bool) ([]result, []result) {
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].ping < all[j].ping
+	})
+
+	var toBeClosed []result
+	if *firstTime {
+		// grab smallest pings considering the threshold
+		if len(all) > cfg.MaxConnections {
+			cutoff := int64(float64(all[0].ping) * cfg.ThresholdFactor)
+			cutoffIndex := max(getClosest(all, cutoff), 1)
+			toBeClosed = all[cutoffIndex:]
+			all = all[:cutoffIndex]
+		}
+		*firstTime = false
+	}
+
+	return all, toBeClosed
+}
+
 // Assumes the results are ordered in ascending order by ping.
 // Returns the index of the closest but not exceeding element in `obj` ping
 // with respect to maxPing
@@ -237,7 +246,9 @@ func (cfg *Config) showPings(objs []result) {
 	}
 
 	for _, obj := range showObjs {
-		show += fmt.Sprintf("Expected ping for connection %s->%s: %d (ms)\n", obj.conn.conn.LocalAddr(), obj.conn.conn.RemoteAddr(), obj.ping)
+		redactedLocal, _ := redactAddress(obj.conn.conn.LocalAddr().String())
+		redactedRemote, _ := redactAddress(obj.conn.conn.RemoteAddr().String())
+		show += fmt.Sprintf("Expected ping for connection %s->%s: %d (ms)\n", redactedLocal, redactedRemote, obj.ping)
 	}
 	log.Printf("%v", show)
 }

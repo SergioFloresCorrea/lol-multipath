@@ -9,10 +9,10 @@ const (
 
 type UDPResult struct {
 	LocalIP   string
-	LocalPort string
+	LocalPort int
 }
 
 type ConnectionUDP struct {
-	LocalAddress string
-	LocalPort    string
+	LocalAddress string `json:"LocalAddress"`
+	LocalPort    int    `json:"LocalPort"`
 }

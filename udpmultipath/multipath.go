@@ -22,7 +22,7 @@ func (cfg *Config) MultipathProxy(ctx context.Context, localIPs []net.IP, proxyA
 	}
 
 	firstTime := true
-	bestConns, err := cfg.selectBestConnections(connSet.UDPConns, connSet.PingConns, &firstTime)
+	bestConns := cfg.selectBestConnections(connSet.UDPConns, connSet.PingConns, &firstTime)
 	if err != nil {
 		return err
 	}
@@ -46,7 +46,7 @@ func (cfg *Config) MultipathProxy(ctx context.Context, localIPs []net.IP, proxyA
 				case <-ctx.Done():
 					return
 				case <-ticker.C:
-					newSel, err := cfg.selectBestConnections(connSet.UDPConns, connSet.PingConns, &firstTime)
+					newSel := cfg.selectBestConnections(connSet.UDPConns, connSet.PingConns, &firstTime)
 					if err != nil {
 						log.Printf("warning: reselection error: %v", err)
 						continue
@@ -140,10 +140,10 @@ func (cfg *Config) sendMultipathData(ctx context.Context, packetChan <-chan []by
 		case pkt := <-packetChan:
 			// grab a snapshot of the current bestConns
 			bestMu.RLock()
-			_ = copy(selconns, *selConnsPtr) // copy returns #elements copied
+			n := copy(selconns, *selConnsPtr) // copy returns #elements copied
 			bestMu.RUnlock()
 			conns := make([]*UdpConnection, 0, cfg.MaxConnections)
-			for _, uc := range selconns {
+			for _, uc := range selconns[:n] {
 				downSinceMu.RLock()
 				_, down := downSince[uc]
 				downSinceMu.RUnlock()

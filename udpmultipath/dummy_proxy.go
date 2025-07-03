@@ -35,7 +35,7 @@ func (serverCfg *Config) ProxyServer(ctx context.Context, configCh chan ProxyCon
 	if err != nil {
 		return fmt.Errorf("Remote Port must be a numeric string")
 	}
-	tracker := &SeenHashTracker{SeenHash: make(map[uint64]time.Time)}
+	tracker := serverCfg.newTracker()
 
 	addr, err := net.ResolveUDPAddr("udp", ProxyListenAddr)
 	if err != nil {
@@ -50,7 +50,7 @@ func (serverCfg *Config) ProxyServer(ctx context.Context, configCh chan ProxyCon
 
 	clientAddr, err := net.ResolveUDPAddr(
 		"udp",
-		net.JoinHostPort(clientIP, clientPort),
+		net.JoinHostPort(clientIP, strconv.Itoa(clientPort)),
 	)
 	if err != nil {
 		return fmt.Errorf("Error in resolving the client's UDP address: %w", err)
@@ -60,7 +60,7 @@ func (serverCfg *Config) ProxyServer(ctx context.Context, configCh chan ProxyCon
 
 	buffer := make([]byte, 64*1024)
 
-	ticker := time.NewTicker(cleanupInterval)
+	ticker := time.NewTicker(tracker.cleanupInterval)
 	defer ticker.Stop()
 
 	go func() {

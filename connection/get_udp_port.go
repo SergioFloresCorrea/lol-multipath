@@ -15,8 +15,8 @@ import (
 // Then, it tries to determine which of them is receiving the UDP traffic
 // (i.e the interface with the lowest metric). Finally, it resolves the League Client Local IP address,
 // Riot's remote server address (IP + Port) from the received UDP packets.
-func GetRiotUDPAddressAndPort(port string, localIPv4 []net.IP) (string, string, error) {
-	filter := fmt.Sprintf("udp and src port %s", port)
+func GetRiotUDPAddressAndPort(port int, localIPv4 []net.IP) (string, string, error) {
+	filter := fmt.Sprintf("udp and src port %d", port)
 	possibleDevices := make([]string, 0)
 	possibleIPs := make([]string, 0)
 

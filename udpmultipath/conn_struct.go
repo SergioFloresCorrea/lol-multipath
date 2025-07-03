@@ -4,8 +4,6 @@ import (
 	"net"
 	"sync"
 	"time"
-
-	"github.com/google/uuid"
 )
 
 type UdpConnection struct {
@@ -24,21 +22,22 @@ type ConnectionPort struct {
 	PingConns []*UdpConnection
 }
 
-type WrappedUDPPacket struct {
-	ID   uuid.UUID
-	Data []byte
-}
-
 type ProxyConfig struct {
 	RemoteIP   net.IP
 	RemotePort string
 	ClientIP   string
-	ClientPort string
+	ClientPort int
 }
 
 type SeenHashTracker struct {
-	mu       sync.Mutex
-	SeenHash map[uint64]time.Time
+	mu              sync.Mutex
+	SeenHash        map[uint64]time.Time
+	cleanupInterval time.Duration
+}
+
+// Creates blank new tracker
+func (cfg *Config) newTracker() *SeenHashTracker {
+	return &SeenHashTracker{SeenHash: make(map[uint64]time.Time), cleanupInterval: cfg.CleanupInterval}
 }
 
 // Cleans entries in the hash tracker older than `cleanupInterval`
@@ -47,7 +46,7 @@ func (tracker *SeenHashTracker) cleanupHash() {
 	defer tracker.mu.Unlock()
 	now := time.Now()
 	for hash, ts := range tracker.SeenHash {
-		if now.Sub(ts) > cleanupInterval {
+		if now.Sub(ts) >= tracker.cleanupInterval {
 			delete(tracker.SeenHash, hash)
 		}
 	}

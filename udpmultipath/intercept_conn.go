@@ -13,9 +13,9 @@ import (
 
 // Intercepts the connection going out from `port` and redirects it into `packetChan`
 // without re-introducing the packet into the network stack
-func InterceptOngoingConnection(port string, packetChan chan<- []byte) error {
+func InterceptOngoingConnection(port int, packetChan chan<- []byte) error {
 	_ = divert.MustLoad(divert.DLL)
-	filter := fmt.Sprintf("udp.SrcPort == %s and outbound and !loopback", port)
+	filter := fmt.Sprintf("udp.SrcPort == %d and outbound and !loopback", port)
 	h, err := divert.Open(filter, divert.Network, 0, 0)
 	if err != nil {
 		return fmt.Errorf("failed to open outbound divert handle: %w", err)

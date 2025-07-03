@@ -21,10 +21,11 @@ func main() {
 	proxyListenCSV := flag.String("proxy-listen-addr", "", "comma-separated list of proxy listen addresses (e.g. \"A:9029,B:9030\")")
 	proxyPingCSV := flag.String("proxy-ping-listen-addr", "", "comma-separated list of proxy ping addresses   (e.g. \"A:10001,B:10002\")")
 	server := flag.String("server", "", "league of legends server. Available servers: NA, LAS, EUW, OCE, EUNE, RU, TR, JP, KR")
-	thresholdFactor := flag.Float64("threshold-factor", 1.4, "exclude connections whose ping exceeds thresholdFactorxthe lowest observed ping")
+	thresholdFactor := flag.Float64("threshold-factor", 1.4, "exclude connections whose ping exceeds thresholdFactorxthe lowest observed ping. Must be greater than 1.0")
 	updateInterval := flag.Duration("update-interval", 30*time.Second, "interval at which to refresh each connection's ping metrics")
 	probeInterval := flag.Duration("probe-interval", 10*time.Second, "interval at which to probe for down connections")
 	timeout := flag.Duration("timeout", 1*time.Second, "ping response timeout")
+	cleanupInterval := flag.Duration("cleanup-interval", 1*time.Second, "how long to wait before cleaning the packet cache involved in the deduplicating package process")
 	maxConnections := flag.Int("max-connections", 2, "maximum number of connections for multipath routing")
 	dynamicMode := flag.Bool("dynamic", false, "enable periodic proxy reselection")
 
@@ -52,6 +53,12 @@ func main() {
 		os.Exit(2)
 	}
 
+	if *thresholdFactor <= 1.0 {
+		log.Fatalf("please input a threshold factor greater than 1.0")
+		flag.Usage()
+		os.Exit(2)
+	}
+
 	RAND, _ := randomHex(5)
 	cfg := udpmultipath.Config{
 		Rand:            RAND,
@@ -60,6 +67,7 @@ func main() {
 		ProbeInterval:   *probeInterval,
 		ThresholdFactor: *thresholdFactor,
 		Timeout:         *timeout,
+		CleanupInterval: *cleanupInterval,
 		MaxConnections:  *maxConnections,
 		Dynamic:         *dynamicMode,
 	}

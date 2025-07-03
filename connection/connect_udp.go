@@ -1,6 +1,7 @@
 package connection
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
@@ -10,7 +11,7 @@ import (
 // Uses a powershell command to find the port and the local address `leagueProcessName` uses to listen
 // for UDP traffic.
 func GetUDPConnection() (ConnectionUDP, error) {
-	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id }`, leagueProcessName)
+	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id } | Select-Object LocalAddress,LocalPort | ConvertTo-Json -Depth 2`, leagueProcessName)
 	cmd := exec.Command("powershell.exe", "-Command", commandString)
 	cmd.Stderr = os.Stderr
 
@@ -21,24 +22,11 @@ func GetUDPConnection() (ConnectionUDP, error) {
 	}
 
 	if len(output) > 0 {
-		str := string(output)
-		lines := strings.Split(str, "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "Get-Process") {
-				return ConnectionUDP{}, fmt.Errorf("couldn't find the process %v", leagueProcessName)
-			}
-			if line == "" || strings.Contains(line, "LocalAddress") || strings.Contains(line, "-") {
-				continue
-			}
-
-			fields := strings.Fields(line)
-
-			if len(fields) >= 2 {
-				connection := ConnectionUDP{LocalAddress: fields[0], LocalPort: fields[1]}
-				return connection, nil
-			}
-
+		var endpoint ConnectionUDP
+		if err := json.Unmarshal(output, &endpoint); err != nil {
+			return ConnectionUDP{}, fmt.Errorf("couldn't find the process %v", leagueProcessName)
 		}
+		return endpoint, nil
 	}
 
 	return ConnectionUDP{}, fmt.Errorf("couldn't find any connection")

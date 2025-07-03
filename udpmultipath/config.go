@@ -6,8 +6,7 @@ import (
 )
 
 const (
-	cleanupInterval = 1 * time.Second // Time to wait before cleaning the packet cache involved in the deduplicating package process. Used in "dummy_proxy.go" and "conn_struct.go"
-	badPing         = 2000            // Default value for a really bad ping in ms.
+	badPing = 2000 // Default value for a really bad ping in ms.
 )
 
 type Config struct {
@@ -18,8 +17,10 @@ type Config struct {
 	UpdateInterval  time.Duration // how often to refresh ping metrics
 	Timeout         time.Duration // how long to wait for a ping response
 	ProbeInterval   time.Duration // how long to wait for probing down connections
+	CleanupInterval time.Duration // how long to wait before cleaning the packet cache involved in the deduplicating package process
 	MaxConnections  int           // maximum number of multipath connections
 	Dynamic         bool          // enable periodic proxy reselection
+
 }
 
 func (cfg *Config) GenerateServerMap() {
