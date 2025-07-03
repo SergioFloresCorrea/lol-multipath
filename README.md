@@ -5,6 +5,7 @@ Currently, the project only works for Windows.
 
 This project attempts to be a starter point for multipath proxy connections between the game client and the Riot's game servers.
 A map what happens is as follows:
+
 ```
     ------------------- Proxy A -----------------
     |                                           |
