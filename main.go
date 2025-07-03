@@ -13,8 +13,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/SergioFloresCorrea/bondcat-reduceping/connection"
-	"github.com/SergioFloresCorrea/bondcat-reduceping/udpmultipath"
+	"github.com/SergioFloresCorrea/lol-multipath/connection"
+	"github.com/SergioFloresCorrea/lol-multipath/udpmultipath"
 )
 
 func main() {
@@ -140,7 +140,7 @@ func main() {
 	remoteIPv4 := net.ParseIP(riotIP)
 	log.Printf("Found Riot IP and Port: %v, %v", riotIP, riotPort)
 
-	if err = udpmultipath.InterceptOngoingConnection(udpConn.LocalPort, packetChan); err != nil {
+	if err = udpmultipath.InterceptOngoingConnection(ctx, udpConn.LocalPort, packetChan); err != nil {
 		log.Fatalf("Couldn't intercept ongoing packets from the client: %v\n", err)
 		os.Exit(1)
 	}
@@ -152,6 +152,7 @@ func main() {
 		proxyChs[i] = make(chan udpmultipath.ProxyConfig)
 	}
 
+	// If the servers are already up, you may omit this loop!
 	for i, listen := range proxyListenAddrs {
 		ping := proxyPingAddrs[i]
 		cfgCh := proxyChs[i]

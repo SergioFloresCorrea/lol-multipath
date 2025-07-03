@@ -1,24 +1,31 @@
 package connection
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
+	"time"
 )
 
 // Uses a powershell command to find the port and the local address `leagueProcessName` uses to listen
 // for UDP traffic.
-func GetUDPConnection() (ConnectionUDP, error) {
+func GetUDPConnection(interval time.Duration) (ConnectionUDP, error) {
 	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id } | Select-Object LocalAddress,LocalPort | ConvertTo-Json -Depth 2`, leagueProcessName)
-	cmd := exec.Command("powershell.exe", "-Command", commandString)
+	ctx, cancel := context.WithTimeout(context.Background(), interval)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-Command", commandString)
 	cmd.Stderr = os.Stderr
 
 	output, err := cmd.Output()
 
 	if err != nil {
-		return ConnectionUDP{}, fmt.Errorf("error in running the powershell command %w", err)
+		if ctx.Err() == context.DeadlineExceeded {
+			return ConnectionUDP{}, fmt.Errorf("timed out after %s", interval)
+		}
+		return ConnectionUDP{}, fmt.Errorf("powershell failed: %v\noutput: %s", err, output)
 	}
 
 	if len(output) > 0 {

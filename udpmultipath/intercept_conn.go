@@ -1,6 +1,7 @@
 package udpmultipath
 
 import (
+	"context"
 	"fmt"
 	"log"
 
@@ -13,7 +14,7 @@ import (
 
 // Intercepts the connection going out from `port` and redirects it into `packetChan`
 // without re-introducing the packet into the network stack
-func InterceptOngoingConnection(port int, packetChan chan<- []byte) error {
+func InterceptOngoingConnection(ctx context.Context, port int, packetChan chan<- []byte) error {
 	_ = divert.MustLoad(divert.DLL)
 	filter := fmt.Sprintf("udp.SrcPort == %d and outbound and !loopback", port)
 	h, err := divert.Open(filter, divert.Network, 0, 0)
@@ -27,6 +28,10 @@ func InterceptOngoingConnection(port int, packetChan chan<- []byte) error {
 		var addr divert.Address
 
 		for {
+			if err := ctx.Err(); err != nil {
+				h.Close()
+				return
+			}
 			n, err := h.Recv(buf, &addr)
 			if err != nil {
 				if errors.Is(err, windows.ERROR_INSUFFICIENT_BUFFER) {

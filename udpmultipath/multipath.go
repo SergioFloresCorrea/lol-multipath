@@ -117,6 +117,11 @@ func (cfg *Config) sendMultipathData(ctx context.Context, packetChan <-chan []by
 						udpConn.mu.Lock()
 						defer udpConn.mu.Unlock()
 
+						deadline := time.Now().Add(min(1*time.Second, cfg.ProbeInterval))
+						if err := udpConn.conn.SetWriteDeadline(deadline); err != nil {
+							log.Printf("Failed to set write deadline: %v", err)
+						}
+
 						if _, err := udpConn.conn.Write([]byte{0}); err == nil {
 							log.Printf("Recovered connection %s->%s (after probe)",
 								udpConn.conn.LocalAddr(), udpConn.conn.RemoteAddr())
@@ -200,29 +205,25 @@ func createDialers(localIPs []net.IP) ([]net.Dialer, error) {
 // Creates connections from the dialers to the target's addresses and target's ping addresses (must use IPv4 to work).
 // It returns the connections in a single struct that stores them one-to-one with the same index.
 // If `len(targetsAddr) != len(targetsPingAddr)`, a further check (`CheckLengths`) will fail
+// This function assumes a one-to-one correspondence between `targetsAddr` and `targetsPingAddr`.
 func createConnections(dialers []net.Dialer, targetsAddr, targetsPingAddr []string) (ConnectionPort, error) {
 	localToTargetsConn := ConnectionPort{}
-
-	var conn net.Conn
-	var connPing net.Conn
-	var err error
+	numAddr := len(targetsAddr)
 
 	for _, localDialer := range dialers {
-		for _, addr := range targetsAddr {
-			conn, err = localDialer.Dial("udp", addr)
+		for idx := range numAddr {
+			conn, err := localDialer.Dial("udp", targetsAddr[idx])
 			if err != nil {
 				closeConnections(localToTargetsConn.UDPConns)
-				return ConnectionPort{}, err
+				return ConnectionPort{}, fmt.Errorf("connection to address %v couldn't be resolved: %w", targetsAddr[idx], err)
 			}
-			localToTargetsConn.UDPConns = append(localToTargetsConn.UDPConns, &UdpConnection{mu: sync.Mutex{}, conn: conn})
-		}
-		for _, addr := range targetsPingAddr {
-			connPing, err = localDialer.Dial("udp", addr)
+			connPing, err := localDialer.Dial("udp", targetsPingAddr[idx])
 			if err != nil {
 				closeConnections(localToTargetsConn.UDPConns)
 				closeConnections(localToTargetsConn.PingConns)
-				return ConnectionPort{}, err
+				return ConnectionPort{}, fmt.Errorf("connection to ping address %v couldn't be resolved: %w", targetsPingAddr[idx], err)
 			}
+			localToTargetsConn.UDPConns = append(localToTargetsConn.UDPConns, &UdpConnection{mu: sync.Mutex{}, conn: conn})
 			localToTargetsConn.PingConns = append(localToTargetsConn.PingConns, &UdpConnection{mu: sync.Mutex{}, conn: connPing})
 		}
 	}

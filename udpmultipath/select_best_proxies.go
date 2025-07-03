@@ -12,10 +12,6 @@ import (
 	"time"
 )
 
-var (
-	pingMu sync.Mutex
-)
-
 // Pings every connection and returns them in ascending order. Depending on `firstTime` it trims them depending
 // on whether their ping exceeds 40% from the least ping.
 func (cfg *Config) selectBestConnections(conns []*UdpConnection, pingConn []*UdpConnection, firstTime *bool) []*UdpConnection {
@@ -184,7 +180,7 @@ func (cfg *Config) selectAndCloseConnections(all []result, firstTime *bool) ([]r
 		// grab smallest pings considering the threshold
 		if len(all) > cfg.MaxConnections {
 			cutoff := int64(float64(all[0].ping) * cfg.ThresholdFactor)
-			cutoffIndex := max(getClosest(all, cutoff), 1)
+			cutoffIndex := max(getClosest(all, cutoff), 1) // guards for getClosest returning -1
 			toBeClosed = all[cutoffIndex:]
 			all = all[:cutoffIndex]
 		}

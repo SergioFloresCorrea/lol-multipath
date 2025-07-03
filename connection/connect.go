@@ -18,8 +18,8 @@ func WaitForLeagueAndResolve(ctx context.Context, interval time.Duration) (UDPRe
 			return UDPResult{}, ctx.Err()
 
 		case <-ticker.C:
-			conn, err := GetUDPConnection()
-			if err == nil {
+			conn, err := GetUDPConnection(interval)
+			if err == nil { // other errors such as not finding the program are ignored
 				return UDPResult{LocalIP: conn.LocalAddress, LocalPort: conn.LocalPort}, err
 			}
 		}

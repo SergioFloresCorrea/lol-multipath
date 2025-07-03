@@ -60,7 +60,7 @@ func GetLocalAddresses() ([]net.IP, error) {
 	return localIPv4, nil
 }
 
-// Redacts an address string to 192.0.1.x/24. Only works for IPv4
+// Redacts an address string to 192.0.1.x/x. Only works for IPv4
 func redactAddress(addr string) (string, error) {
 	parts := strings.SplitN(addr, "/", 2)
 	ipStringParts := strings.Split(parts[0], ".")
@@ -68,6 +68,7 @@ func redactAddress(addr string) (string, error) {
 		return "", errors.New("invalid IPv4 address: " + parts[0])
 	}
 	ipStringParts[3] = "x"
+	parts[1] = "x"
 
 	redacted := strings.Join(ipStringParts, ".")
 	if len(parts) == 2 {

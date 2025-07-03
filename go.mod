@@ -1,4 +1,4 @@
-module github.com/SergioFloresCorrea/bondcat-reduceping
+module github.com/SergioFloresCorrea/lol-multipath
 
 go 1.24.0
 

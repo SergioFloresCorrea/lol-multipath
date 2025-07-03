@@ -53,7 +53,7 @@ func GetRiotUDPAddressAndPort(port int, localIPv4 []net.IP) (string, string, err
 outer:
 	for index, device := range possibleDevices {
 		fmt.Printf("Using interface: %s\n", device)
-		handle, err := pcap.OpenLive(device, 1024, false, timeout)
+		handle, err := pcap.OpenLive(device, 1024*64, false, timeout)
 		if err != nil {
 			return "", "", fmt.Errorf("failed to open device: %w", err)
 		}
