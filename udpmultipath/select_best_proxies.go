@@ -1,6 +1,7 @@
 package udpmultipath
 
 import (
+	"bytes"
 	"encoding/binary"
 	"fmt"
 	"io"
@@ -158,7 +159,11 @@ func (cfg *Config) udping(conn *UdpConnection) (int64, error) {
 	total := time.Since(t0)
 
 	// Decode the “bloat” (HTTP proxy delay) in ms
-	bloatMs := binary.BigEndian.Uint64(resp)
+	var bloatMs int64
+	r := bytes.NewReader(resp)
+	if err := binary.Read(r, binary.BigEndian, &bloatMs); err != nil {
+		return 0, fmt.Errorf("decode int64: %w", err)
+	}
 	bloat := time.Duration(bloatMs) * time.Millisecond
 
 	// True UDP RTT

@@ -234,7 +234,7 @@ func createConnections(dialers []net.Dialer, targetsAddr, targetsPingAddr []stri
 // Closes all UdpConnections.
 func closeConnections(connections []*UdpConnection) {
 	for i := range connections {
-		connections[i].conn.Close()
+		_ = connections[i].conn.Close()
 	}
 }
 

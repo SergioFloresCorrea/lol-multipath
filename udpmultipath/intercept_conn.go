@@ -29,7 +29,7 @@ func InterceptOngoingConnection(ctx context.Context, port int, packetChan chan<-
 
 		for {
 			if err := ctx.Err(); err != nil {
-				h.Close()
+				_ = h.Close()
 				return
 			}
 			n, err := h.Recv(buf, &addr)

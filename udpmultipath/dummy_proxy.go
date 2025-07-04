@@ -1,6 +1,7 @@
 package udpmultipath
 
 import (
+	"bytes"
 	"context"
 	"encoding/binary"
 	"fmt"
@@ -80,7 +81,9 @@ func (serverCfg *Config) ProxyServer(ctx context.Context, configCh chan ProxyCon
 		}
 
 		// avoid hanging for more than 1 second
-		conn.SetReadDeadline(time.Now().Add(1 * time.Second))
+		if err := conn.SetReadDeadline(time.Now().Add(1 * time.Second)); err != nil {
+			log.Printf("unable to set read deadline: %v", err)
+		}
 
 		n, srcAddr, err := conn.ReadFromUDP(buffer)
 		if err != nil {
@@ -153,7 +156,12 @@ func PingHandler(ctx context.Context, listenAddr, server string, serverMap map[s
 			return fmt.Errorf("HTTP ping error (%s): %w", server, err)
 		}
 
-		binary.BigEndian.PutUint64(respBuf, uint64(bloat.Milliseconds()))
+		bloatMs := bloat.Milliseconds()
+
+		var buf bytes.Buffer
+		if err := binary.Write(&buf, binary.BigEndian, bloatMs); err != nil {
+			return fmt.Errorf("encode int64: %w", err)
+		}
 
 		// echo the 8-byte latency back to the client
 		if _, err := pc.WriteTo(respBuf, addr); err != nil {
