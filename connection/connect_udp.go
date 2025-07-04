@@ -13,8 +13,8 @@ import (
 // Uses a powershell command to find the port and the local address `leagueProcessName` uses to listen
 // for UDP traffic.
 func GetUDPConnection(interval time.Duration) (ConnectionUDP, error) {
-	//nolint:gosec // `leagueProcessName` is a constant
 	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id } | Select-Object LocalAddress,LocalPort | ConvertTo-Json -Depth 2`, leagueProcessName)
+	//nolint:gosec // `leagueProcessName` is a constant
 	ctx, cancel := context.WithTimeout(context.Background(), interval)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "powershell.exe", "-Command", commandString)
@@ -41,8 +41,8 @@ func GetUDPConnection(interval time.Duration) (ConnectionUDP, error) {
 }
 
 func CheckIfLeagueIsActive() bool {
-	//nolint:gosec // `leagueProcessName` is a constant
 	commandString := fmt.Sprintf(`Get-Process -Name "%s" -ErrorAction SilentlyContinue`, leagueProcessName)
+	//nolint:gosec // `leagueProcessName` is a constant
 	cmd := exec.Command("powershell.exe", "-Command", commandString)
 
 	output, _ := cmd.Output()

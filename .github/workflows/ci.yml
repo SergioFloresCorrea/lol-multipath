@@ -50,7 +50,7 @@ jobs:
       - name: Check Style
         shell: pwsh
         run: |
-          test -z $(go fmt ./...)
+          test -z "$(go fmt ./...)"
 
       - name: Do static check
         shell: pwsh
