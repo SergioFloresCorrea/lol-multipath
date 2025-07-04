@@ -134,8 +134,7 @@ func PingHandler(ctx context.Context, listenAddr, server string, serverMap map[s
 	defer pc.Close()
 	log.Printf("Ping handler listening on %s for shard %s", listenAddr, server)
 
-	reqBuf := make([]byte, 8)  // interface's sent dummy
-	respBuf := make([]byte, 8) // to hold the 8-byte nanosecond latency
+	reqBuf := make([]byte, 8) // interface's sent dummy
 
 	for {
 		if err := ctx.Err(); err != nil {
@@ -164,7 +163,7 @@ func PingHandler(ctx context.Context, listenAddr, server string, serverMap map[s
 		}
 
 		// echo the 8-byte latency back to the client
-		if _, err := pc.WriteTo(respBuf, addr); err != nil {
+		if _, err := pc.WriteTo(buf.Bytes(), addr); err != nil {
 			return fmt.Errorf("failed to write ping echo: %w", err)
 		}
 	}

@@ -50,10 +50,7 @@ jobs:
       - name: Check Style
         shell: pwsh
         run: |
-          $formatted = go fmt ./...
-          if ($formatted) {
-            Write-Error "Go files must be formatted (run go fmt)"
-          }
+          test -z $(go fmt ./...)
 
       - name: Do static check
         shell: pwsh
