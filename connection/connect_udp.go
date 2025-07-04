@@ -14,10 +14,9 @@ import (
 // for UDP traffic.
 func GetUDPConnection(interval time.Duration) (ConnectionUDP, error) {
 	commandString := fmt.Sprintf(`Get-NetUDPEndpoint | Where-Object { $_.OwningProcess -eq (Get-Process -Name "%s").Id } | Select-Object LocalAddress,LocalPort | ConvertTo-Json -Depth 2`, leagueProcessName)
-	//nolint:gosec // `leagueProcessName` is a constant
 	ctx, cancel := context.WithTimeout(context.Background(), interval)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, "powershell.exe", "-Command", commandString)
+	cmd := exec.CommandContext(ctx, "powershell.exe", "-Command", commandString) // #nosec G204
 	cmd.Stderr = os.Stderr
 
 	output, err := cmd.Output()
@@ -42,8 +41,7 @@ func GetUDPConnection(interval time.Duration) (ConnectionUDP, error) {
 
 func CheckIfLeagueIsActive() bool {
 	commandString := fmt.Sprintf(`Get-Process -Name "%s" -ErrorAction SilentlyContinue`, leagueProcessName)
-	//nolint:gosec // `leagueProcessName` is a constant
-	cmd := exec.Command("powershell.exe", "-Command", commandString)
+	cmd := exec.Command("powershell.exe", "-Command", commandString) // #nosec G204
 
 	output, _ := cmd.Output()
 
