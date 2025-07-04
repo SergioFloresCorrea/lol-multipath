@@ -1,3 +1,4 @@
+![test badge](https://github.com/SergioFloresCorrea/learn-cicd-starter/actions/workflows/ci.yml/badge.svg)
 # Multipath connection for League of Legends
 
 ## Introduction
