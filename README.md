@@ -4,30 +4,31 @@
 ## Introduction
 Currently, the project only works for Windows. 
 
-This project attempts to be a starter point for multipath proxy connections between the game client and the Riot's game servers.
+This project is a starter point for facilitating multipath proxy connections between the game client and the Riot's game servers.
 A map what happens is as follows:
 
 ```
     ------------------- Proxy A -----------------
     |                                           |
 Game Client------------ Proxy B ---------------- Riot's game server
-(   includes all           |                    |
-internet interfaces        |                    |
-e.g WiFi, Ethernet)        |                    |
-    |                      |                    |
+(   includes all           .                    |
+internet interfaces        .                    |
+e.g WiFi, Ethernet)        .                    |
+    |                      .                    |
     ------------------- Proxy N -----------------
 ```
 
-Ideally, this multipath connection should ensure greater stability (and thus, a more stable ping) and, by reducing the distance a UDP packet
-needs to travel between the game client and the game server, it may also reduce latency. The code provided ensures that only the connections
-with the lowest ping are used by leveraging WinDivert and the net-package. 
+This multipath connection ensures greater stability by reducing the distance a UDP packet needs to travel between the game client and the game server, 
+which translates into a lower ping (*). The code provided ensures that only the connections
+with the lowest ping are used by leveraging WinDivert and the Golang net-package. 
+
+(*) Depends on your actual ISP.
 
 ## Usage
-The code uses WinDivert to intercept incoming packets; thus, admin privileges are needed.
-I don’t run public proxy servers (*), so the binary alone won't be of any use. You’ll need to point it at your own proxies or loopback adapters. 
-The code still needs to be slightly altered to ensure direct 
-communications with the proxies. However, it does provide an example on how that may be done, as well as flags which ensure the multipath
-configuration. 
+The code uses WinDivert to intercept incoming packets; thus, **admin privileges are needed**.
+I don’t run public proxy servers (**), so the binary alone won't be of any use. You’ll need to point it at your own proxies or loopback adapters. 
+The code still may need to be slightly altered to ensure direct communications with the proxies. However, it does provide an example on how that may be done, 
+as well as flags which ensure the multipath configuration. The example can be seen in `main.go` and `dummy_proxy.go`. 
 
 ```
 | Flag                             | Type     | Description                                                                                                               |
@@ -45,10 +46,11 @@ configuration.
 
 ```
 
-For example,
+For instance,
 `lol-multipath.exe -proxy-listen-addr="IP1:PORT1,IP2:PORT2" -proxy-ping-listen-addr="IP1:PORT1X,IP2:PORT2X" -server "NA" -dynamic`
 Take into account that the ping address and ping listen address must have a 1-to-1 correspondence (as seen from the IPs in the example).
 
+(**) All tests were done using my own internet interfaces, so it may not be fully complete.
 
 ## Regarding the Proxy
 As mentioned above, I do not own any proxy servers, so the code assumes some characteristics of them.
@@ -57,7 +59,7 @@ As mentioned above, I do not own any proxy servers, so the code assumes some cha
 3. They must have a way to receive information about a) Riot's game server port and IP, b) Game Client's listen port and c) IP of the internet interfaces.
 
 If you just want to test you may readily use the code as it is and use your own interfaces' IP in both `-proxy-listen-addr` and `-proxy-ping-listen-addr`. However, please note that
-you won't see any improvement or even may find no in-game response due to if the "proxy" is located at an interface with a bigger metric (i.e not the preferred pathway). For example,
+you won't see any improvement or even may find no in-game response due to if the "proxy" is located at an interface with a bigger metric (i.e not the preferred network pathway). For example,
 in my case, if my "proxy" is my WiFi the game won't reflect any changes and will even be unresponsive as the preferred interface is Ethernet.
 
 
@@ -98,4 +100,4 @@ Firstly, all connections use UDP protocol. Second, each big Riot server (i.e "NA
 An initial idea would be to find the addresses of those "shards", which will indeed make things faster, but I wasn't able to do it (and don't think it is possible unless you are a Riot employee).
 If I remember something I will add it here.
 
-(*) All tests were done using my own internet interfaces, so it may not be fully complete.
+
