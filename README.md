@@ -101,3 +101,5 @@ An initial idea would be to find the addresses of those "shards", which will ind
 If I remember something I will add it here.
 
 
+## Contributing
+If you would like to contribute to the project, please fork the repository and make a pull request to the `main` branch.
